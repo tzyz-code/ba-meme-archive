@@ -190,6 +190,10 @@ app.post('/api/memes', express.json(), async (req, res) => {
 
     let charId = char || null;
     if (!charId && String(title).trim()) charId = await cdb.resolveCharacter(title, ipId);
+    // 显式指定的新角色也自动建档（出现即建，防止 memes 引用了 characters 里不存在的角色）
+    if (charId && !(await cdb.getChar(charId))) {
+      await cdb.insertChar({ id: charId, name: charId, en: '', ip: ipId, hue: cdb.hashHue(charId), avatar: '', is_new: 1 });
+    }
 
     const code = await cdb.nextCode(ipId);
     await cdb.insertMeme({
@@ -243,6 +247,10 @@ app.patch('/api/meme/:code', express.json(), async (req, res) => {
 
     let charId = char || null;
     if (!charId && String(title).trim()) charId = await cdb.resolveCharacter(title, ipId);
+    // 显式指定的新角色也自动建档（出现即建）
+    if (charId && !(await cdb.getChar(charId))) {
+      await cdb.insertChar({ id: charId, name: charId, en: '', ip: ipId, hue: cdb.hashHue(charId), avatar: '', is_new: 1 });
+    }
 
     await cdb.adminUpdateMeme(adminKey, code, String(title).trim(), ipId, charId, JSON.stringify(finalEmo), text || '');
 
