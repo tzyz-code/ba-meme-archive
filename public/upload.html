@@ -38,9 +38,8 @@
     <div style="text-align:center;margin-bottom:var(--sp-6)">
       <h1 style="font-size:var(--fs-h1);font-weight:var(--fw-black);letter-spacing:-1px">上传表情，入库归档</h1>
       <p class="text-mute mt-4" style="max-width:560px;margin-inline:auto">
-        拖进来就行。<b>识图模型会自动判断</b>这张图属于哪个 IP、哪个角色，
-        你只要确认一下就完成了。填好<b>角色名</b>（可自定义 IP），系统会自动匹配角色，
-        并从网上抓取一张对应图片作为角色馆头图。
+        拖进来就行。填好<b>角色名</b>、所属 IP 与搜索关键词，确认后即入库。
+        系统会自动匹配角色，并从网上抓取一张对应图片作为角色馆头图。
       </p>
     </div>
 
@@ -64,13 +63,39 @@
       <ul class="text-sm text-mute flex-col gap-1" style="line-height:1.8">
         <li>· 请勿上传侵权、涉黄、政治敏感或攻击性内容</li>
         <li>· 尽量使用原图画质，压缩会损失识别准确率</li>
-        <li>· AI 识别结果<span class="tag tag--auto">⌁ 自动</span>可随时手动修正，修正后的档案会被优先展示</li>
+        <li>· 上传时请如实填写角色名与关键词，入库后信息仅管理员可修改</li>
         <li>· 蔚蓝档案相关表情会因站点主权重获得更多曝光</li>
       </ul>
     </div>
 
   </div>
 </main>
+
+<style>
+.modal-mask{position:fixed;inset:0;background:rgba(20,26,46,.46);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px}
+.modal-box{background:var(--color-bg-elev,#fff);border-radius:16px;max-width:400px;width:100%;padding:22px 22px 18px;box-shadow:0 24px 64px rgba(0,0,0,.25);animation:modalin .18s ease}
+@keyframes modalin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.modal-box__title{font-size:18px;font-weight:800;letter-spacing:-.3px;color:var(--color-text,#1a1a1a)}
+.modal-box__sub{color:var(--color-text-mute,#889);font-size:13px;margin:6px 0 14px}
+.modal-box__body{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.confirm-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:10px 12px;background:var(--surface-sunken,#eef1f8);border-radius:10px;font-size:14px;color:var(--color-text,#1a1a1a)}
+.confirm-row span{color:var(--color-text-mute,#889);flex-shrink:0}
+.confirm-row b{text-align:right;word-break:break-all;font-weight:700}
+.modal-box__actions{display:flex;justify-content:flex-end;gap:10px}
+</style>
+
+<!-- 确认入库弹窗 -->
+<div class="modal-mask" id="confirmMask" style="display:none">
+  <div class="modal-box">
+    <div class="modal-box__title">确认入库信息</div>
+    <p class="modal-box__sub">请核对以下信息，入库后除管理员外将无法修改</p>
+    <div class="modal-box__body" id="confirmBody"></div>
+    <div class="modal-box__actions">
+      <button class="btn btn--ghost" id="confirmCancel">返回修改</button>
+      <button class="btn btn--primary" id="confirmOk">确认提交</button>
+    </div>
+  </div>
+</div>
 
 <script src="assets/js/data.js"></script>
 <script>
@@ -89,14 +114,35 @@ function defaultTitle(name) {
   return name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || '未命名档案';
 }
 
+/* ---- 确认入库弹窗 ---- */
+let _confirmCb = null;
+function showConfirm(bodyHTML, onConfirm) {
+  $('#confirmBody').innerHTML = bodyHTML;
+  _confirmCb = onConfirm;
+  $('#confirmMask').style.display = 'flex';
+}
+function closeConfirm() {
+  $('#confirmMask').style.display = 'none';
+  _confirmCb = null;
+}
+$('#confirmCancel').addEventListener('click', closeConfirm);
+$('#confirmOk').addEventListener('click', () => {
+  const cb = _confirmCb;
+  closeConfirm();
+  if (cb) cb();
+});
+$('#confirmMask').addEventListener('click', e => {
+  if (e.target === $('#confirmMask')) closeConfirm();
+});
+
 let uid = 0;
 const items = [];
 
-/* ---- 真实上传 → 后端识图 → 返回识别结果 ---- */
+/* ---- 真实上传 → 仅暂存（不做 AI 识图，节省时间） ---- */
 async function addFile(file) {
   const id = ++uid;
   const item = { id, file, url: URL.createObjectURL(file), name: file.name,
-                 uploading: true, done: false, result: null, uploadId: null, error: null };
+                 uploading: true, done: false, uploadId: null, error: null };
   items.push(item);
   render();
   try {
@@ -107,41 +153,12 @@ async function addFile(file) {
     if (!r.ok) throw new Error(j.error || '上传失败');
     item.uploadId = j.uploadId;
     item.serverUrl = j.url;
-    item.result = j.result;
     item.uploading = false;
     item.done = true;
     render();
-    UI.toast(j.result.auto ? '识别完成，确认后即可入库' : '置信度较低，请人工校正后入库');
   } catch (e) {
     item.uploading = false;
     item.error = e.message;
-    render();
-  }
-}
-
-/* 重新识别：把用户已填的标题/关键词作为 hint 再传一次 */
-async function redo(item, row) {
-  const title = row.querySelector('[data-f="title"]').value.trim();
-  const text  = row.querySelector('[data-f="text"]').value.trim();
-  item.uploading = true; item.done = false; item.error = null;
-  render();
-  try {
-    const fd = new FormData();
-    fd.append('file', item.file);
-    fd.append('hint', title + ' ' + text);
-    const r = await fetch('/api/upload', { method: 'POST', body: fd });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || '识别失败');
-    // 换用新文件，删除旧暂存
-    if (item.uploadId) fetch('/api/upload/' + item.uploadId, { method: 'DELETE' });
-    item.uploadId = j.uploadId;
-    item.serverUrl = j.url;
-    item.result = j.result;
-    item.uploading = false; item.done = true;
-    render();
-    UI.toast('已重新识别');
-  } catch (e) {
-    item.uploading = false; item.error = e.message;
     render();
   }
 }
@@ -151,11 +168,10 @@ function render() {
   if (!items.length) { host.innerHTML = ''; return; }
 
   host.innerHTML = items.map(it => {
-    const r = it.result;
     const progress = it.done ? 100 : it.uploading ? 62 : 0;
     const msg = it.error ? ('上传失败：' + it.error)
-              : it.uploading ? '识图模型推理中（匹配 IP 与角色库）…'
-              : it.done ? '识别完成，请确认或校正' : '';
+              : it.uploading ? '上传中…'
+              : it.done ? '上传完成，请填写信息' : '';
 
     const body = it.error ? `
       <div class="progress-msg" style="color:var(--red-500,#d33)">
@@ -165,12 +181,6 @@ function render() {
       <div class="progress"><div class="progress__bar" style="width:${progress}%"></div></div>
       <div class="progress-msg"><span class="spinner"></span><span>${msg}</span></div>` : `
       <div class="ai-result">
-        <div class="ai-result__head">
-          <span class="tag tag--auto">⌁ ${r.auto ? 'AI 自动归类' : '待人工校正'}</span>
-          <span>置信度 ${r.conf}%</span>
-          <span class="text-xs text-mute">${r.provider === 'heuristic' ? '启发式识别' : r.provider}</span>
-          <button class="ml-auto text-xs" style="color:var(--brand-600);font-weight:700" data-act="redo">重新识别</button>
-        </div>
         <div class="field">
           <label class="field__label">角色名（必填）</label>
           <input class="input" data-f="title" placeholder="如：白子、凯伊… 入库时自动匹配角色并抓取角色馆头图" value="${defaultTitle(it.name)}">
@@ -184,7 +194,7 @@ function render() {
           <label class="field__label">角色（可改，新角色将自动建档）</label>
           <select class="input" data-f="char">
             <option value="">— 无角色 —</option>
-            ${CHARS.map(c => `<option value="${c.id}" ${r.char === c.id ? 'selected' : ''}>${charDisplayName(c)}</option>`).join('')}
+            ${CHARS.map(c => `<option value="${c.id}">${charDisplayName(c)}</option>`).join('')}
             <option value="__new__">＋ 新角色…</option>
           </select>
           <input class="input" data-f="newchar" placeholder="输入新角色名（如：凯伊），入库后自动建目录" style="display:none;margin-top:8px">
@@ -229,7 +239,6 @@ $('#queue').addEventListener('click', async e => {
   const it = items[idx];
   if (!it) return;
 
-  if (act.dataset.act === 'redo')  { redo(it, row); }
   if (act.dataset.act === 'remove') {
     if (it.uploadId) fetch('/api/upload/' + it.uploadId, { method: 'DELETE' });
     URL.revokeObjectURL(it.url);
@@ -248,26 +257,38 @@ $('#queue').addEventListener('click', async e => {
       if (!newIp) { UI.toast('请填写自定义 IP 名称'); return; }
     }
     const text = row.querySelector('[data-f="text"]').value.trim();
-    act.disabled = true;
-    try {
-      const r = await fetch('/api/memes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId: it.uploadId, title, ip, newIp, char, text,
-                               auto: it.result.auto, conf: it.result.conf }),
-      });
-      const j = await r.json();
-      if (j.ok) {
-        UI.toast('已入库：' + j.meme.code);
-        setTimeout(() => { location.href = 'detail.html?code=' + j.meme.code; }, 600);
-      } else {
-        UI.toast(j.error || '入库失败');
+
+    // 摘要显示名
+    const ipShow = ip === '__new__' ? '自定义：' + newIp : ((window.IP_DB[ip] && window.IP_DB[ip].name) || ip);
+    const chObj = CHARS.find(c => c.id === char);
+    const charShow = !char ? '无角色' : (chObj ? charDisplayName(chObj) : '新角色：' + char);
+
+    showConfirm(`
+      <div class="confirm-row"><span>角色名</span><b>${title}</b></div>
+      <div class="confirm-row"><span>所属 IP</span><b>${ipShow}</b></div>
+      <div class="confirm-row"><span>角色</span><b>${charShow}</b></div>
+      <div class="confirm-row"><span>搜索关键词</span><b>${text || '—'}</b></div>
+    `, async () => {
+      act.disabled = true;
+      try {
+        const r = await fetch('/api/memes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uploadId: it.uploadId, title, ip, newIp, char, text, auto: false, conf: 0 }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          UI.toast('已入库：' + j.meme.code);
+          setTimeout(() => { location.href = 'detail.html?code=' + j.meme.code; }, 600);
+        } else {
+          UI.toast(j.error || '入库失败');
+          act.disabled = false;
+        }
+      } catch (err) {
+        UI.toast('入库失败：' + err.message);
         act.disabled = false;
       }
-    } catch (err) {
-      UI.toast('入库失败：' + err.message);
-      act.disabled = false;
-    }
+    });
   }
 });
 

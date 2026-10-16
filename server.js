@@ -15,6 +15,9 @@ const avatar = require('./lib/avatar');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/* 管理员口令：上传后的表情包仅管理员可编辑（点「编辑」时输入） */
+const ADMIN_KEY = process.env.ADMIN_KEY || '2648965787';
+
 /* 站点基准 URL（SEO 用，og:image/canonical 需绝对地址） */
 function siteBase(req) {
   return (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -216,22 +219,20 @@ app.get('/api/meta', (req, res) => {
   res.json({ ips, emotions, chars });
 });
 
-// ---------- 上传：接收图片 → 识图 → 暂存（未入库） ----------
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+// ---------- 上传：接收图片 → 暂存（未入库，不做 AI 识图，节省时间） ----------
+app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/gif/webp 图片（≤10MB）' });
   const id = 'u' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
-  const result = await classifier.classify(req.file.path, req.file.originalname, req.body.hint || '');
   const queue = loadQueue();
   queue[id] = {
     id,
     orig: req.file.originalname,
     file: req.file.filename,
     url: '/uploads/' + req.file.filename,
-    result,
     createdAt: new Date().toISOString(),
   };
   saveQueue(queue);
-  res.json({ uploadId: id, url: queue[id].url, orig: queue[id].orig, result });
+  res.json({ uploadId: id, url: queue[id].url, orig: queue[id].orig });
 });
 
 // 删除暂存（放弃这张）
@@ -302,12 +303,13 @@ app.post('/api/memes', express.json(), (req, res) => {
   res.json({ ok: true, meme });
 });
 
-/* ---------- 编辑档案：改标题/IP/角色/关键词（新角色自动建档） ---------- */
+/* ---------- 编辑档案：仅管理员可编辑（需口令），新角色自动建档 ---------- */
 app.patch('/api/meme/:code', express.json(), (req, res) => {
   const code = req.params.code;
   if (!db.prepare('SELECT id FROM memes WHERE code=?').get(code)) return res.status(404).json({ error: '档案不存在' });
 
-  const { title, ip, newIp, char, emo, text } = req.body || {};
+  const { title, ip, newIp, char, emo, text, adminKey } = req.body || {};
+  if (String(adminKey || '') !== ADMIN_KEY) return res.status(403).json({ error: '无编辑权限：需要管理员口令' });
   if (!title || !String(title).trim()) return res.status(400).json({ error: '角色名不能为空' });
 
   // 所属 IP：自定义 IP 自动建档
@@ -367,15 +369,23 @@ const avatarUpload = multer({
   fileFilter: (_, file, cb) => cb(null, /\.(jpe?g|png|webp)$/i.test(file.originalname)),
 });
 
-app.post('/api/chars/:id/avatar', avatarUpload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/webp 图片（≤5MB）' });
-  const c = db.prepare('SELECT id FROM characters WHERE id=?').get(req.params.id);
-  if (!c) return res.status(404).json({ error: '角色不存在' });
-  const rel = 'assets/img/chars/' + req.file.filename;
-  db.prepare('UPDATE characters SET avatar=?, is_new=0 WHERE id=?').run(rel, req.params.id);
-  classifier.refreshDict();
-  res.json({ ok: true, avatar: rel });
-});
+app.post('/api/chars/:id/avatar',
+  /* 预检：角色存在 + 尚无头图，通过后再让 multer 落盘（避免覆盖已有头图） */
+  (req, res, next) => {
+    const c = db.prepare('SELECT id, avatar FROM characters WHERE id=?').get(req.params.id);
+    if (!c) return res.status(404).json({ error: '角色不存在' });
+    if (c.avatar) return res.status(403).json({ error: '该角色已有头图，仅限未带头图的角色上传' });
+    next();
+  },
+  avatarUpload.single('file'),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/webp 图片（≤5MB）' });
+    const rel = 'assets/img/chars/' + req.file.filename;
+    db.prepare('UPDATE characters SET avatar=?, is_new=0 WHERE id=?').run(rel, req.params.id);
+    classifier.refreshDict();
+    res.json({ ok: true, avatar: rel });
+  }
+);
 
 /* ---------- SSR 详情页（SEO：爬虫不执行 JS 也能拿到完整内容） ---------- */
 const emoName = id => (db.prepare('SELECT name FROM emotions WHERE id=?').get(id) || {}).name || id;

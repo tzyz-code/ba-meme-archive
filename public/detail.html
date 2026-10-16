@@ -74,6 +74,8 @@
             <div class="meta-list__row"><span class="meta-list__key">归类方式</span><span class="meta-list__val" id="dAuto"></span></div>
           </div>
 
+          <div class="mt-4" id="avatarFix" style="display:none"></div>
+
           <div class="mt-5" id="confBox">
             <div class="conf">
               <span class="text-xs fw-bold text-mute">识别置信度</span>
@@ -111,6 +113,31 @@
     </div>
   </div>
 </footer>
+
+<style>
+.modal-mask{position:fixed;inset:0;background:rgba(20,26,46,.46);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px}
+.modal-box{background:var(--color-bg-elev,#fff);border-radius:16px;max-width:400px;width:100%;padding:22px 22px 18px;box-shadow:0 24px 64px rgba(0,0,0,.25);animation:modalin .18s ease}
+@keyframes modalin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.modal-box__title{font-size:18px;font-weight:800;letter-spacing:-.3px;color:var(--color-text,#1a1a1a)}
+.modal-box__sub{color:var(--color-text-mute,#889);font-size:13px;margin:6px 0 14px}
+.modal-box__body{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.modal-box__actions{display:flex;justify-content:flex-end;gap:10px}
+</style>
+
+<!-- 管理员口令弹窗 -->
+<div class="modal-mask" id="adminMask" style="display:none">
+  <div class="modal-box">
+    <div class="modal-box__title">管理员验证</div>
+    <p class="modal-box__sub">编辑档案需验证管理员身份，请输入口令</p>
+    <div class="modal-box__body">
+      <input type="password" class="input" id="adminKeyInput" placeholder="管理员口令" autocomplete="off">
+    </div>
+    <div class="modal-box__actions">
+      <button class="btn btn--ghost" id="adminCancel">取消</button>
+      <button class="btn btn--primary" id="adminOk">确认</button>
+    </div>
+  </div>
+</div>
 
 <script src="assets/js/data.js"></script>
 <script>
@@ -169,6 +196,29 @@ setTimeout(()=>{ $('#confFill').style.width = m.conf + '%'; }, 260);
 $('#confNum').textContent = m.conf + '%';
 $('#ipWeightTxt').textContent = (0.35 * ip.weight).toFixed(2) + ' 分（权重 ' + ip.weight.toFixed(2) + '）';
 
+/* 手动收录的档案无识别置信度，隐藏置信度模块 */
+if (!m.auto) $('#confBox').style.display = 'none';
+
+/* 补全角色头图（仅无头图角色可见，所有用户可用） */
+if (ch && !ch.avatar) {
+  $('#avatarFix').style.display = '';
+  $('#avatarFix').innerHTML = `<button class="btn btn--ghost btn--sm" id="avatarFixBtn">＋ 为「${charDisplayName(ch)}」补全头图</button>
+    <input type="file" id="avatarFixFile" accept="image/png,image/jpeg,image/webp" hidden>`;
+  $('#avatarFixBtn').addEventListener('click', () => $('#avatarFixFile').click());
+  $('#avatarFixFile').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    try {
+      const r = await fetch('/api/chars/' + encodeURIComponent(ch.id) + '/avatar', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) { UI.toast(j.error || '上传失败'); return; }
+      UI.toast('头图已补全'); setTimeout(() => location.reload(), 500);
+    } catch (err) { UI.toast('上传失败：' + err.message); }
+  });
+}
+
 $('#relGrid').innerHTML = data.related.map(cardHTML).join('');
 $('#relGrid').addEventListener('click', e => {
   const fav = e.target.closest('.card__fav');
@@ -189,8 +239,6 @@ const IP_OPTIONS = Object.values(window.IP_DB)
   }).join('');
 
 function buildEditForm() {
-  const curChar = m.char ? charOf(m.char) : null;
-  const needAvatar = curChar && !curChar.avatar;
   $('#editForm').innerHTML = `
     <div class="field"><label class="field__label">角色名</label>
       <input class="input" data-f="etitle" placeholder="如：白子、凯伊… 保存后自动匹配角色并抓取角色馆头图" value="${m.title}"></div>
@@ -204,8 +252,6 @@ function buildEditForm() {
         <option value="__new__">＋ 新角色…</option>
       </select>
       <input class="input" data-f="enewchar" placeholder="输入新角色名" style="display:none;margin-top:8px"></div>
-    ${needAvatar ? `<div class="field"><label class="field__label">角色「${charDisplayName(curChar)}」还没有头像 — 上传一张（自动匹配失败时的兜底）</label>
-      <input type="file" class="input" data-f="eavatarfile" accept="image/png,image/jpeg,image/webp"></div>` : ''}
     <div class="field"><label class="field__label">搜索关键词</label>
       <input class="input" data-f="etext" value="${m.text || ''}"></div>
     <div class="action-row mt-4">
@@ -214,12 +260,35 @@ function buildEditForm() {
     </div>`;
 }
 
-$('#editBtn').addEventListener('click', () => {
+let adminKey = sessionStorage.getItem('ba_admin_key') || '';
+function openEditPanel() {
   const panel = $('#editPanel');
   const open = panel.style.display === 'none';
   panel.style.display = open ? '' : 'none';
   if (open) { buildEditForm(); panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+}
+$('#editBtn').addEventListener('click', () => {
+  if (adminKey) { openEditPanel(); return; }
+  showAdminPrompt();
 });
+
+/* 管理员口令弹窗 */
+function showAdminPrompt() {
+  $('#adminKeyInput').value = '';
+  $('#adminMask').style.display = 'flex';
+  setTimeout(() => $('#adminKeyInput').focus(), 50);
+}
+function closeAdminPrompt() { $('#adminMask').style.display = 'none'; }
+$('#adminOk').addEventListener('click', () => {
+  const v = $('#adminKeyInput').value.trim();
+  if (!v) { UI.toast('请输入管理员口令'); return; }
+  adminKey = v;
+  sessionStorage.setItem('ba_admin_key', v);
+  closeAdminPrompt();
+  openEditPanel();
+});
+$('#adminCancel').addEventListener('click', closeAdminPrompt);
+$('#adminMask').addEventListener('click', e => { if (e.target === $('#adminMask')) closeAdminPrompt(); });
 
 $('#editPanel').addEventListener('change', e => {
   if (e.target.matches('[data-f="echar"]')) {
@@ -254,17 +323,19 @@ async function saveEdit(btn) {
     const r = await fetch('/api/meme/' + m.code, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, ip, newIp, char, text }),
+      body: JSON.stringify({ title, ip, newIp, char, text, adminKey }),
     });
     const j = await r.json();
-    if (!j.ok) { UI.toast(j.error || '保存失败'); btn.disabled = false; return; }
-    // 有头像文件时顺手上传（对最终角色 id）
-    const avFile = $('#editPanel [data-f="eavatarfile"]');
-    if (char && avFile && avFile.files[0]) {
-      const fd = new FormData();
-      fd.append('file', avFile.files[0]);
-      await fetch('/api/chars/' + encodeURIComponent(char) + '/avatar', { method: 'POST', body: fd });
+    if (r.status === 403) {
+      // 口令错误：清空并重新验证
+      adminKey = ''; sessionStorage.removeItem('ba_admin_key');
+      $('#editPanel').style.display = 'none';
+      UI.toast(j.error || '口令错误');
+      btn.disabled = false;
+      showAdminPrompt();
+      return;
     }
+    if (!j.ok) { UI.toast(j.error || '保存失败'); btn.disabled = false; return; }
     UI.toast('已保存'); setTimeout(() => location.reload(), 500);
   } catch (err) {
     UI.toast('保存失败：' + err.message); btn.disabled = false;
