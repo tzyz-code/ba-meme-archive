@@ -248,7 +248,7 @@ function buildEditForm() {
     <div class="field"><label class="field__label">角色</label>
       <select class="input" data-f="echar">
         <option value="">— 无角色 —</option>
-        ${CHARS.map(c => `<option value="${c.id}" ${m.char === c.id ? 'selected' : ''}>${charDisplayName(c)}</option>`).join('')}
+        ${CHARS.map(c => `<option value="${c.id}" ${m.char === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
         <option value="__new__">＋ 新角色…</option>
       </select>
       <input class="input" data-f="enewchar" placeholder="输入新角色名" style="display:none;margin-top:8px"></div>

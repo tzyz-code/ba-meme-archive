@@ -144,7 +144,7 @@ async function addFile(file) {
   const item = { id, file, url: URL.createObjectURL(file), name: file.name,
                  uploading: true, done: false, uploadId: null, error: null };
   items.push(item);
-  render();
+  appendItem(item);
   try {
     const fd = new FormData();
     fd.append('file', file);
@@ -155,69 +155,79 @@ async function addFile(file) {
     item.serverUrl = j.url;
     item.uploading = false;
     item.done = true;
-    render();
+    renderItem(item);
   } catch (e) {
     item.uploading = false;
     item.error = e.message;
-    render();
+    renderItem(item);
   }
 }
 
-function render() {
-  const host = $('#queue');
-  if (!items.length) { host.innerHTML = ''; return; }
+function itemHTML(it) {
+  const progress = it.done ? 100 : it.uploading ? 62 : 0;
+  const msg = it.error ? ('上传失败：' + it.error)
+            : it.uploading ? '上传中…'
+            : it.done ? '上传完成，请填写信息' : '';
 
-  host.innerHTML = items.map(it => {
-    const progress = it.done ? 100 : it.uploading ? 62 : 0;
-    const msg = it.error ? ('上传失败：' + it.error)
-              : it.uploading ? '上传中…'
-              : it.done ? '上传完成，请填写信息' : '';
-
-    const body = it.error ? `
-      <div class="progress-msg" style="color:var(--red-500,#d33)">
-        <span>${msg}</span>
-        <button class="btn btn--ghost btn--sm ml-auto" data-act="remove">移除</button>
-      </div>` : it.uploading ? `
-      <div class="progress"><div class="progress__bar" style="width:${progress}%"></div></div>
-      <div class="progress-msg"><span class="spinner"></span><span>${msg}</span></div>` : `
-      <div class="ai-result">
-        <div class="field">
-          <label class="field__label">角色名（必填）</label>
-          <input class="input" data-f="title" placeholder="如：白子、凯伊… 入库时自动匹配角色并抓取角色馆头图" value="${defaultTitle(it.name)}">
-        </div>
-        <div class="field">
-          <label class="field__label">所属 IP</label>
-          <select class="input" data-f="ip">${IP_OPTIONS}<option value="__new__">＋ 自定义 IP…</option></select>
-          <input class="input" data-f="newip" placeholder="输入新 IP 名称（如：赛马娘），入库后自动建档" style="display:none;margin-top:8px">
-        </div>
-        <div class="field">
-          <label class="field__label">角色（可改，新角色将自动建档）</label>
-          <select class="input" data-f="char">
-            <option value="">— 无角色 —</option>
-            ${CHARS.map(c => `<option value="${c.id}">${charDisplayName(c)}</option>`).join('')}
-            <option value="__new__">＋ 新角色…</option>
-          </select>
-          <input class="input" data-f="newchar" placeholder="输入新角色名（如：凯伊），入库后自动建目录" style="display:none;margin-top:8px">
-        </div>
-        <div class="field">
-          <label class="field__label">搜索关键词（描述这张图的用途，帮助检索与收录）</label>
-          <input class="input" data-f="text" value="">
-        </div>
-        <div class="action-row mt-5">
-          <button class="btn btn--primary" data-act="save">确认入库</button>
-          <button class="btn btn--ghost" data-act="remove">丢弃</button>
-        </div>
-      </div>`;
-
-    return `
-    <div class="upload-item" data-id="${it.id}">
-      <div class="upload-item__thumb"><img src="${it.url}" alt=""></div>
-      <div class="upload-item__body">
-        <div class="upload-item__name">${it.name}</div>
-        ${body}
+  const body = it.error ? `
+    <div class="progress-msg" style="color:var(--red-500,#d33)">
+      <span>${msg}</span>
+      <button class="btn btn--ghost btn--sm ml-auto" data-act="remove">移除</button>
+    </div>` : it.uploading ? `
+    <div class="progress"><div class="progress__bar" style="width:${progress}%"></div></div>
+    <div class="progress-msg"><span class="spinner"></span><span>${msg}</span></div>` : `
+    <div class="ai-result">
+      <div class="field">
+        <label class="field__label">角色名（必填）</label>
+        <input class="input" data-f="title" placeholder="如：白子、凯伊… 入库时自动匹配角色并抓取角色馆头图" value="${defaultTitle(it.name)}">
+      </div>
+      <div class="field">
+        <label class="field__label">所属 IP</label>
+        <select class="input" data-f="ip">${IP_OPTIONS}<option value="__new__">＋ 自定义 IP…</option></select>
+        <input class="input" data-f="newip" placeholder="输入新 IP 名称（如：赛马娘），入库后自动建档" style="display:none;margin-top:8px">
+      </div>
+      <div class="field">
+        <label class="field__label">角色（可改，新角色将自动建档）</label>
+        <select class="input" data-f="char">
+          <option value="">— 无角色 —</option>
+          ${CHARS.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+          <option value="__new__">＋ 新角色…</option>
+        </select>
+        <input class="input" data-f="newchar" placeholder="输入新角色名（如：凯伊），入库后自动建目录" style="display:none;margin-top:8px">
+      </div>
+      <div class="field">
+        <label class="field__label">搜索关键词（描述这张图的用途，帮助检索与收录）</label>
+        <input class="input" data-f="text" value="">
+      </div>
+      <div class="action-row mt-5">
+        <button class="btn btn--primary" data-act="save">确认入库</button>
+        <button class="btn btn--ghost" data-act="remove">丢弃</button>
       </div>
     </div>`;
-  }).join('');
+
+  return `
+  <div class="upload-item" data-id="${it.id}">
+    <div class="upload-item__thumb"><img src="${it.url}" alt=""></div>
+    <div class="upload-item__body">
+      <div class="upload-item__name">${it.name}</div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+/* 细粒度更新：只动单个条目，避免并发上传时整表重绘清空用户已填内容 */
+function renderItem(it) {
+  const el = $('#queue').querySelector('.upload-item[data-id="' + it.id + '"]');
+  if (el) el.outerHTML = itemHTML(it);
+}
+function appendItem(it) {
+  $('#queue').insertAdjacentHTML('beforeend', itemHTML(it));
+}
+function removeItem(it) {
+  const el = $('#queue').querySelector('.upload-item[data-id="' + it.id + '"]');
+  if (el) el.remove();
+  const i = items.findIndex(x => x.id === it.id);
+  if (i >= 0) items.splice(i, 1);
 }
 
 /* ---- 交互 ---- */
@@ -242,8 +252,7 @@ $('#queue').addEventListener('click', async e => {
   if (act.dataset.act === 'remove') {
     if (it.uploadId) fetch('/api/upload/' + it.uploadId, { method: 'DELETE' });
     URL.revokeObjectURL(it.url);
-    items.splice(idx, 1);
-    render();
+    removeItem(it);
   }
   if (act.dataset.act === 'save') {
     const title = row.querySelector('[data-f="title"]').value.trim();
@@ -261,7 +270,7 @@ $('#queue').addEventListener('click', async e => {
     // 摘要显示名
     const ipShow = ip === '__new__' ? '自定义：' + newIp : ((window.IP_DB[ip] && window.IP_DB[ip].name) || ip);
     const chObj = CHARS.find(c => c.id === char);
-    const charShow = !char ? '无角色' : (chObj ? charDisplayName(chObj) : '新角色：' + char);
+    const charShow = !char ? '无角色' : (chObj ? chObj.name : '新角色：' + char);
 
     showConfirm(`
       <div class="confirm-row"><span>角色名</span><b>${title}</b></div>
@@ -279,7 +288,10 @@ $('#queue').addEventListener('click', async e => {
         const j = await r.json();
         if (j.ok) {
           UI.toast('已入库：' + j.meme.code);
-          setTimeout(() => { location.href = 'detail.html?code=' + j.meme.code; }, 600);
+          URL.revokeObjectURL(it.url);
+          removeItem(it);
+          // 批量上传：队列还有未处理的就留在本页继续；全部完成后才跳到详情页
+          if (!items.length) setTimeout(() => { location.href = 'detail.html?code=' + j.meme.code; }, 600);
         } else {
           UI.toast(j.error || '入库失败');
           act.disabled = false;
