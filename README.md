@@ -1,41 +1,55 @@
 # ba表情档案 · BA Meme Archive
 
-蔚蓝档案表情包一站式检索站 —— 玩家共建的表情包档案馆：上传即自动识别归类，按角色、关键词、档案编号快速检索。
+蔚蓝档案表情包一站式检索站 —— 玩家共建的表情包档案馆：上传即归档，按角色、关键词、档案编号快速检索。
 
 ## 功能
 
 - **检索**：多字段搜索（标题 / 角色中英文名 / 关键词 / 编号），权重排序（蔚蓝档案优先 ×3.3 权重）
-- **上传入库**：拖拽上传 → 自动识图（文件名启发式 + pHash 视觉匹配）→ 人工校正 → 入库
-- **角色目录**：出现即建目录；新角色自动从 kivo.wiki 拉取头像，失败可手动上传
-- **编辑档案**：标题 / IP / 角色 / 关键词随时可改，新角色同步建档
-- **收藏、浏览计数、相关档案推荐**
+- **上传入库**：拖拽上传 → 填角色名/IP/关键词 → 确认弹窗 → 入库（无 AI 识图，上传秒传）
+- **角色目录**：出现即建目录；新角色自动从 kivo.wiki / 维基百科抓取头像，失败可手动补传（仅限无头图角色）
+- **编辑档案**：上传后仅管理员可编辑（口令验证）；角色名/IP/角色/关键词可改
 - **SEO**：每张档案独立 SSR 详情页（`/meme/:code`），含 JSON-LD ImageObject、og 标签、sitemap.xml / robots.txt
 - **移动端适配**：响应式布局，手机可用
 
 ## 技术栈
 
-- 后端：Node.js（Express + `node:sqlite` 内置模块，零编译依赖）
+- 后端：Node.js（Express），数据存 **WorkBuddy 云服务 PostgreSQL**（`@tencent-ai/workbuddy-cloud-sdk`）
+- 图片：**腾讯云 COS**（对象存储，匿名可读）
 - 前端：原生 HTML / CSS / JS（无框架、无构建）
-- 依赖：`express`、`multer`（上传）、`jimp`（pHash 视觉识别）
+- 依赖：`express`、`multer`、`@tencent-ai/workbuddy-cloud-sdk`、`cos-nodejs-sdk-v5`
 
 ## 快速开始
 
 ```bash
 npm install
-npm run seed   # 初始化字典（IP / 角色库，档案库为空等待上传）
 npm start      # http://localhost:3000
 ```
+
+前置条件：
+
+1. **云数据库**：项目需先在工作区激活 WorkBuddy 云服务（`workbuddy_cloud_service`），
+   云库 schema（ips/characters/emotions/memes 表 + RLS 策略）由云服务管理面初始化。
+2. **图片存储**：在项目 `data/cos-config.json` 填入腾讯云 COS 凭证：
+
+```json
+{
+  "SecretId": "AKID...",
+  "SecretKey": "...",
+  "Bucket": "your-bucket-1250000000",
+  "Region": "ap-shanghai"
+}
+```
+
+（`data/` 已 gitignore，凭证不会进仓库；未配置时图片回退本地 `data/uploads/`，仅供本地开发）
 
 ## 目录结构
 
 ```
 ├── server.js          # Express 后端（API + SSR 详情页 + sitemap/robots）
-├── db.js              # SQLite 初始化与迁移
-├── seed.js            # 字典种子（IP/角色/情绪）
+├── cloud-db.js        # 云数据库访问层（封装 SDK 的 CRUD / 建档 / 管理员更新 RPC）
 ├── lib/
-│   ├── classifier.js  # 识图 Provider（可插拔，启发式 + pHash 融合）
-│   ├── visual.js      # pHash 视觉相似度匹配（对比角色头像）
-│   └── avatar.js      # 新角色头像自动获取（kivo.wiki）
+│   ├── storage.js     # 图片存储（COS 优先，本地兜底）
+│   └── avatar.js      # 新角色头像自动获取（kivo.wiki / 维基百科）
 ├── public/            # 前端静态资源
 │   ├── index.html     # 档案大厅
 │   ├── search.html    # 搜索页
@@ -44,18 +58,20 @@ npm start      # http://localhost:3000
 │   ├── report.html    # 侵权反馈
 │   └── assets/        # 设计令牌、组件样式、JS 数据层
 ├── docs/              # kivo.wiki 学生头像 sitemap（头像匹配索引用）
-└── data/              # 运行时数据（gitignore：SQLite + uploads）
+└── data/              # 运行时数据（gitignore：COS 配置、uploads 缓存）
 ```
 
 ## 数据说明
 
-- 所有数据存于本地 SQLite（`data/archive.db`），不依赖外部数据库，随项目发布即可运行
+- 档案记录（IP/角色/情绪/表情）存于 **WorkBuddy 云数据库**，跨部署持久
+- 图片（表情图 / 新角色头像）存于 **腾讯云 COS**，公开可读
 - 数据层保留「情绪」字段但界面已由「搜索关键词」承担
-- 上传的图片存于 `data/uploads/`
+- 管理员口令：上传后编辑需口令（`server.js` 的 `ADMIN_KEY`，默认 2648965787）
 
 ## 部署
 
-任何支持单端口 HTTP 服务的环境均可部署（监听 `PORT` 环境变量，绑定 `0.0.0.0`）。SQLite 随项目运行，无需外部服务。
+任何支持单端口 HTTP 服务的环境均可部署（监听 `PORT` 环境变量，绑定 `0.0.0.0`）。
+发布到 WorkBuddy「发布为应用」时复用同一 applicationId，保持域名与云服务 Origin 不变。
 
 ## 免责声明
 

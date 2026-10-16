@@ -9,6 +9,8 @@
     "seed": "node seed.js"
   },
   "dependencies": {
+    "@tencent-ai/workbuddy-cloud-sdk": "^0.1.4-dev.ca27990.202610161713",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "express": "^4.21.0",
     "jimp": "^1.6.1",
     "multer": "^2.4.0"

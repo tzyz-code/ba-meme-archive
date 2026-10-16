@@ -1,6 +1,6 @@
 /* ba表情档案 · 后端服务
-   Express + SQLite（node:sqlite）
-   阶段2：静态托管 + 搜索 API + 排序权重落地 */
+   Express + WorkBuddy 云服务（PostgreSQL）+ 图片对象存储（COS）
+   数据层见 cloud-db.js；图片存储见 lib/storage.js */
 process.env.NODE_NO_WARNINGS = '1';
 
 const path = require('path');
@@ -8,8 +8,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
-const { db, hydrate } = require('./db');
-const classifier = require('./lib/classifier');
+const cdb = require('./cloud-db');
+const storage = require('./lib/storage');
 const avatar = require('./lib/avatar');
 
 const app = express();
@@ -23,105 +23,28 @@ function siteBase(req) {
   return (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* 图片绝对地址：兼容相对路径（本地）与 COS 绝对 URL */
+function absImg(url, base) {
+  if (!url) return base + '/assets/img/logo.png';
+  return /^https?:\/\//.test(url) ? url : base + url;
+}
 
-/* ---------- 上传存储 ---------- */
-const UPLOAD_DIR = path.join(__dirname, 'data', 'uploads');
+/* ---------- 上传暂存队列（内存态：图片在 /api/upload 即已入对象存储） ---------- */
 const UPLOAD_META = path.join(__dirname, 'data', 'uploads.json');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
 function loadQueue() {
   try { return JSON.parse(fs.readFileSync(UPLOAD_META, 'utf8')); } catch { return {}; }
 }
 function saveQueue(q) { fs.writeFileSync(UPLOAD_META, JSON.stringify(q, null, 2)); }
 
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, UPLOAD_DIR),
-  filename: (_, file, cb) => {
-    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
-    cb(null, Date.now().toString(36) + crypto.randomBytes(4).toString('hex') + ext);
-  },
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_, file, cb) => cb(null, /\.(jpe?g|png|gif|webp)$/i.test(file.originalname)),
 });
 
-/* 稳定色相（与 data.js/seed.js 一致） */
-function hashHue(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
-  return h % 360;
-}
-
-/* 档案编号：IP 前缀 + 自增序号 */
-function nextCode(ipId) {
-  const ipRow = db.prepare('SELECT short FROM ips WHERE id=?').get(ipId);
-  const prefix = (ipRow && ipRow.short ? ipRow.short : 'GEN').toUpperCase();
-  const rows = db.prepare("SELECT code FROM memes WHERE code LIKE ?").all(prefix + '-%');
-  let max = 0;
-  for (const r of rows) {
-    const n = parseInt(r.code.split('-')[1], 10);
-    if (n > max) max = n;
-  }
-  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
-}
-
-/* 自定义 IP 建档：按名称生成稳定 id（英文转 slug，中文用 hash），返回 id */
-function ensureIp(name) {
-  const n = String(name).trim();
-  let id = n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  if (!id || /^\d+$/.test(id)) id = 'ip-' + hashHue(n).toString(36);
-  if (db.prepare('SELECT id FROM ips WHERE id=?').get(id)) id += '-' + hashHue(n).toString(36).slice(0, 2);
-  db.prepare('INSERT INTO ips (id,name,short,weight,cls,priority) VALUES (?,?,?,?,?,?)')
-    .run(id, n, (id.replace(/-/g, '').slice(0, 4) || 'IP').toUpperCase(), 0.3, 'ip-badge--other', 9);
-  classifier.refreshDict();
-  return id;
-}
-
-/* 角色名自动识别角色：匹配字典 → 命中返回已有 id；未命中新建角色目录（出现即建） */
-function resolveCharacter(name, ipId) {
-  const q = String(name).trim();
-  if (!q) return null;
-  const ql = q.toLowerCase();
-  const rows = db.prepare('SELECT * FROM characters').all();
-  // 1) 精确匹配：中文名 / 英文名 / id
-  let hit = rows.find(r => r.name === q || (r.en || '').toLowerCase() === ql || r.id === q);
-  // 2) 包含 / 后缀匹配（≥2 字，避免单字误命中）
-  if (!hit && q.length >= 2) {
-    hit = rows.find(r =>
-      (r.en && ql.includes(r.en.toLowerCase())) ||
-      (r.name && (q.includes(r.name) || r.name.includes(q))));
-  }
-  if (hit) return hit.id;
-  const id = q;   // 与既有约定一致：新角色 id = 角色名
-  db.prepare('INSERT INTO characters (id,name,en,ip,hue,avatar,is_new) VALUES (?,?,?,?,?,?,1)')
-    .run(id, q, '', ipId || 'ba', hashHue(q), '');
-  return id;
-}
-
-/* ---------- 查询工具 ---------- */
-// 关联 IP/角色，返回完整字段
-const SELECT_MEME = `
-  SELECT m.*, i.weight AS ip_weight, i.name AS ip_name,
-         c.name AS char_name, c.en AS char_en, c.avatar AS char_avatar, c.hue AS char_hue
-  FROM memes m
-  LEFT JOIN ips i ON i.id = m.ip
-  LEFT JOIN characters c ON c.id = m.char
-`;
-
-function allMemes() {
-  return db.prepare(SELECT_MEME + ' ORDER BY m.id').all().map(hydrate);
-}
-function getMeme(code) {
-  return hydrate(db.prepare(SELECT_MEME + ' WHERE m.code = ?').get(code));
-}
-
-/* ---------- 核心排序权重（服务端落地）----------
+/* ---------- 核心排序权重（与原实现一致） ----------
    文本相关性 = 多字段匹配分（决定是否命中搜索）
-   最终分   = 文本相关性 + 0.35×IP权重 + 0.20×热度归一 + 0.15×时效归一 + 0.03×置信度
-   蔚蓝档案 ipWeight=1.0 → 贡献 0.35 分，天然压过其它 IP
--------------------------------------------------- */
+   最终分   = 文本相关性 + 0.35×IP权重 + 0.20×热度归一 + 0.15×时效归一 + 0.03×置信度 */
 function textScore(m, query) {
   if (!query) return 0;
   let s = 0;
@@ -142,260 +65,234 @@ function textScore(m, query) {
   }
   return s;
 }
-
 function scoreMeme(m, query) {
   let s = textScore(m, query);
-  s += 0.35 * (m.ip_weight ?? 0.3);                 // IP 权重
-  s += 0.20 * Math.log10((m.views || 0) + 1) / Math.log10(20000); // 热度
-  s += 0.15 * Math.exp(-(m.age_days || 0) / 45);    // 时效
-  s += 0.03 * ((m.conf || 0) / 100);                // 置信度
+  s += 0.35 * (m.ip_weight ?? 0.3);
+  s += 0.20 * Math.log10((m.views || 0) + 1) / Math.log10(20000);
+  s += 0.15 * Math.exp(-(m.age_days || 0) / 45);
+  s += 0.03 * ((m.conf || 0) / 100);
   return s;
 }
 
 /* ---------- API ---------- */
 
 // 搜索
-app.get('/api/search', (req, res) => {
-  const q    = String(req.query.q || '');
-  const ip   = String(req.query.ip  || 'all');
-  const ch   = String(req.query.char || 'all');
-  const emo  = String(req.query.emo  || 'all');
-  const sort = String(req.query.sort || 'relevance');
-  const limit  = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-  const offset = parseInt(req.query.offset, 10) || 0;
+app.get('/api/search', async (req, res) => {
+  try {
+    const q    = String(req.query.q || '');
+    const ip   = String(req.query.ip  || 'all');
+    const ch   = String(req.query.char || 'all');
+    const emo  = String(req.query.emo  || 'all');
+    const sort = String(req.query.sort || 'relevance');
+    const limit  = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const offset = parseInt(req.query.offset, 10) || 0;
 
-  let list = allMemes();
+    let list = await cdb.allMemes();
+    if (ip  !== 'all') list = list.filter(m => m.ip === ip);
+    if (ch  !== 'all') list = list.filter(m => m.char === ch);
+    if (emo !== 'all') list = list.filter(m => m.emo.includes(emo));
 
-  if (ip  !== 'all') list = list.filter(m => m.ip === ip);
-  if (ch  !== 'all') list = list.filter(m => m.char === ch);
-  if (emo !== 'all') list = list.filter(m => m.emo.includes(emo));
+    if (q) {
+      list = list.filter(m => textScore(m, q) > 0);
+      list.sort((a, b) => scoreMeme(b, q) - scoreMeme(a, q));
+    } else {
+      list.sort((a, b) => scoreMeme(b, '') - scoreMeme(a, ''));
+    }
+    if (sort === 'hot')  list.sort((a, b) => b.views - a.views);
+    if (sort === 'new')  list.sort((a, b) => a.age_days - b.age_days);
+    if (sort === 'conf') list.sort((a, b) => b.conf - a.conf);
 
-  if (q) {
-    list = list.filter(m => textScore(m, q) > 0);   // 命中门槛只看文本相关性
-    list.sort((a, b) => scoreMeme(b, q) - scoreMeme(a, q));
-  } else {
-    list.sort((a, b) => scoreMeme(b, '') - scoreMeme(a, ''));
-  }
-
-  if (sort === 'hot')  list.sort((a, b) => b.views - a.views);
-  if (sort === 'new')  list.sort((a, b) => a.age_days - b.age_days);
-  if (sort === 'conf') list.sort((a, b) => b.conf - a.conf);
-
-  const total = list.length;
-  res.json({ total, list: list.slice(offset, offset + limit) });
+    res.json({ total: list.length, list: list.slice(offset, offset + limit) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 角色目录（由表情包动态派生，出现即建）
-app.get('/api/chars', (req, res) => {
-  const chars = db.prepare(`
-    SELECT c.*, COUNT(m.id) AS count
-    FROM characters c
-    LEFT JOIN memes m ON m.char = c.id
-    GROUP BY c.id
-    ORDER BY count DESC, c.is_new DESC, c.id
-  `).all().map(hydrate);
-  res.json(chars);
+// 角色目录
+app.get('/api/chars', async (req, res) => {
+  try { res.json(await cdb.charsWithCount()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 单条详情 + 相关
-app.get('/api/meme/:code', (req, res) => {
-  const m = getMeme(req.params.code);
-  if (!m) return res.status(404).json({ error: 'not found' });
-  const related = allMemes().filter(x => x.code !== m.code && (
-    (m.char && x.char === m.char) || x.emo.some(e => m.emo.includes(e))
-  )).slice(0, 8);
-  res.json({ meme: m, related });
+app.get('/api/meme/:code', async (req, res) => {
+  try {
+    const m = await cdb.getMeme(req.params.code);
+    if (!m) return res.status(404).json({ error: 'not found' });
+    const all = await cdb.allMemes();
+    const related = all.filter(x => x.code !== m.code && (
+      (m.char && x.char === m.char) || x.emo.some(e => m.emo.includes(e))
+    )).slice(0, 8);
+    res.json({ meme: m, related });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 元数据（IP/情绪/角色目录），供筛选器
-app.get('/api/meta', (req, res) => {
-  const ips = db.prepare('SELECT * FROM ips ORDER BY priority').all();
-  const emotions = db.prepare('SELECT * FROM emotions').all();
-  const chars = db.prepare(`
-    SELECT c.*, COUNT(m.id) AS count
-    FROM characters c LEFT JOIN memes m ON m.char = c.id
-    GROUP BY c.id ORDER BY count DESC, c.is_new DESC, c.id
-  `).all().map(hydrate);
-  res.json({ ips, emotions, chars });
+// 元数据
+app.get('/api/meta', async (req, res) => {
+  try {
+    const [ips, emotions, chars] = await Promise.all([cdb.allIps(), cdb.allEmotions(), cdb.charsWithCount()]);
+    res.json({ ips, emotions, chars });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ---------- 上传：接收图片 → 暂存（未入库，不做 AI 识图，节省时间） ----------
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/gif/webp 图片（≤10MB）' });
-  const id = 'u' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
-  const queue = loadQueue();
-  queue[id] = {
-    id,
-    orig: req.file.originalname,
-    file: req.file.filename,
-    url: '/uploads/' + req.file.filename,
-    createdAt: new Date().toISOString(),
-  };
-  saveQueue(queue);
-  res.json({ uploadId: id, url: queue[id].url, orig: queue[id].orig });
+// ---------- 上传：接收图片 → 入对象存储 → 暂存（不做 AI 识图） ----------
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/gif/webp 图片（≤10MB）' });
+    const id = 'u' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase().replace('.', '');
+    const url = await storage.saveMemeImage(req.file.buffer, ext);
+    const queue = loadQueue();
+    queue[id] = { id, orig: req.file.originalname, url, createdAt: new Date().toISOString() };
+    saveQueue(queue);
+    res.json({ uploadId: id, url, orig: req.file.originalname });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 删除暂存（放弃这张）
 app.delete('/api/upload/:id', (req, res) => {
   const queue = loadQueue();
-  const item = queue[req.params.id];
-  if (!item) return res.status(404).json({ error: 'not found' });
-  fs.promises.unlink(path.join(UPLOAD_DIR, item.file)).catch(() => {});
+  if (!queue[req.params.id]) return res.status(404).json({ error: 'not found' });
   delete queue[req.params.id];
   saveQueue(queue);
   res.json({ ok: true });
 });
 
-// 暂存队列（用于页面恢复）
+// 暂存队列
 app.get('/api/upload', (req, res) => {
   const queue = loadQueue();
   res.json(Object.values(queue).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });
 
-// ---------- 确认入库：人工校正后落库（新角色自动建目录） ----------
-app.post('/api/memes', express.json(), (req, res) => {
-  const { uploadId, title, ip, newIp, char, emo, text, auto, conf } = req.body || {};
-  const queue = loadQueue();
-  const item = queue[uploadId];
-  if (!item) return res.status(404).json({ error: '上传记录不存在' });
-  if (!title || !String(title).trim()) return res.status(400).json({ error: '请填写角色名' });
+// ---------- 确认入库 ----------
+app.post('/api/memes', express.json(), async (req, res) => {
+  try {
+    const { uploadId, title, ip, newIp, char, emo, text, auto, conf } = req.body || {};
+    const queue = loadQueue();
+    const item = queue[uploadId];
+    if (!item) return res.status(404).json({ error: '上传记录不存在' });
+    if (!title || !String(title).trim()) return res.status(400).json({ error: '请填写角色名' });
 
-  // 所属 IP：自定义 IP 自动建档
-  let ipId = ip;
-  if (ip === '__new__') {
-    const name = String(newIp || '').trim();
-    if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
-    ipId = ensureIp(name);
-  }
-  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ipId)) return res.status(400).json({ error: 'IP 无效' });
-
-  // 情绪：未知标签（自定义）自动注册进 emotions
-  const emoArr = Array.isArray(emo) ? emo : [];
-  const finalEmo = [];
-  for (const e of emoArr) {
-    const id = String(e).trim();
-    if (!id) continue;
-    if (!db.prepare('SELECT id FROM emotions WHERE id=?').get(id)) {
-      db.prepare('INSERT INTO emotions (id,name) VALUES (?,?)').run(id, id);
+    let ipId = ip;
+    if (ip === '__new__') {
+      const name = String(newIp || '').trim();
+      if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
+      ipId = await cdb.ensureIp(name);
     }
-    finalEmo.push(id);
-  }
-  if (!finalEmo.length) finalEmo.push('doge');
+    if (!(await cdb.getIp(ipId))) return res.status(400).json({ error: 'IP 无效' });
 
-  // 角色：显式选择优先；未选时用「角色名」自动识别 / 建档（出现即建目录）
-  let charId = char || null;
-  if (!charId && String(title).trim()) charId = resolveCharacter(title, ipId);
-
-  const code = nextCode(ipId);
-  db.prepare(
-    'INSERT INTO memes (code,title,ip,char,emo,views,age_days,auto,conf,text,image_url) VALUES (?,?,?,?,?,0,0,?,?,?,?)'
-  ).run(code, String(title).trim(), ipId, charId, JSON.stringify(finalEmo), auto ? 1 : 0, conf || 0, text || '', item.url);
-
-  // 移除暂存
-  delete queue[uploadId];
-  saveQueue(queue);
-  classifier.refreshDict();
-
-  // 自动获取角色头像（BA 走 kivo，其它走网上搜索，异步不阻塞入库响应）
-  if (charId) avatar.ensureAvatar(charId).catch(() => {});
-
-  const meme = hydrate(db.prepare(SELECT_MEME + ' WHERE m.code=?').get(code));
-  res.json({ ok: true, meme });
-});
-
-/* ---------- 编辑档案：仅管理员可编辑（需口令），新角色自动建档 ---------- */
-app.patch('/api/meme/:code', express.json(), (req, res) => {
-  const code = req.params.code;
-  if (!db.prepare('SELECT id FROM memes WHERE code=?').get(code)) return res.status(404).json({ error: '档案不存在' });
-
-  const { title, ip, newIp, char, emo, text, adminKey } = req.body || {};
-  if (String(adminKey || '') !== ADMIN_KEY) return res.status(403).json({ error: '无编辑权限：需要管理员口令' });
-  if (!title || !String(title).trim()) return res.status(400).json({ error: '角色名不能为空' });
-
-  // 所属 IP：自定义 IP 自动建档
-  let ipId = ip;
-  if (ip === '__new__') {
-    const name = String(newIp || '').trim();
-    if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
-    ipId = ensureIp(name);
-  }
-  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ipId)) return res.status(400).json({ error: 'IP 无效' });
-
-  const existing = db.prepare('SELECT * FROM memes WHERE code=?').get(code);
-
-  // emo 未传时保留原值（情绪维度已从界面移除，由搜索关键词承担）
-  let finalEmo;
-  if (Array.isArray(emo)) {
-    finalEmo = [];
-    for (const e of emo) {
+    const emoArr = Array.isArray(emo) ? emo : [];
+    const finalEmo = [];
+    for (const e of emoArr) {
       const id = String(e).trim();
       if (!id) continue;
-      if (!db.prepare('SELECT id FROM emotions WHERE id=?').get(id)) {
-        db.prepare('INSERT INTO emotions (id,name) VALUES (?,?)').run(id, id);
-      }
+      await cdb.ensureEmotion(id);
       finalEmo.push(id);
     }
     if (!finalEmo.length) finalEmo.push('doge');
-  } else {
-    try { finalEmo = JSON.parse(existing.emo || '[]'); } catch { finalEmo = ['doge']; }
-    if (!finalEmo.length) finalEmo.push('doge');
+
+    let charId = char || null;
+    if (!charId && String(title).trim()) charId = await cdb.resolveCharacter(title, ipId);
+
+    const code = await cdb.nextCode(ipId);
+    await cdb.insertMeme({
+      code, title: String(title).trim(), ip: ipId, char: charId,
+      emo: JSON.stringify(finalEmo), views: 0, age_days: 0,
+      auto: auto ? 1 : 0, conf: conf || 0, text: text || '', image_url: item.url,
+    });
+
+    delete queue[uploadId];
+    saveQueue(queue);
+
+    if (charId) avatar.ensureAvatar(charId).catch(() => {});
+
+    res.json({ ok: true, meme: await cdb.getMeme(code) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ---------- 编辑档案：仅管理员可编辑（需口令） ---------- */
+app.patch('/api/meme/:code', express.json(), async (req, res) => {
+  try {
+    const code = req.params.code;
+    if (!(await cdb.getMeme(code))) return res.status(404).json({ error: '档案不存在' });
+
+    const { title, ip, newIp, char, emo, text, adminKey } = req.body || {};
+    if (String(adminKey || '') !== ADMIN_KEY) return res.status(403).json({ error: '无编辑权限：需要管理员口令' });
+    if (!title || !String(title).trim()) return res.status(400).json({ error: '角色名不能为空' });
+
+    let ipId = ip;
+    if (ip === '__new__') {
+      const name = String(newIp || '').trim();
+      if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
+      ipId = await cdb.ensureIp(name);
+    }
+    if (!(await cdb.getIp(ipId))) return res.status(400).json({ error: 'IP 无效' });
+
+    const existing = await cdb.getMeme(code);
+    let finalEmo;
+    if (Array.isArray(emo)) {
+      finalEmo = [];
+      for (const e of emo) {
+        const id = String(e).trim();
+        if (!id) continue;
+        await cdb.ensureEmotion(id);
+        finalEmo.push(id);
+      }
+      if (!finalEmo.length) finalEmo.push('doge');
+    } else {
+      try { finalEmo = JSON.parse(existing.emo || '[]'); } catch { finalEmo = ['doge']; }
+      if (!finalEmo.length) finalEmo.push('doge');
+    }
+
+    let charId = char || null;
+    if (!charId && String(title).trim()) charId = await cdb.resolveCharacter(title, ipId);
+
+    await cdb.adminUpdateMeme(adminKey, code, String(title).trim(), ipId, charId, JSON.stringify(finalEmo), text || '');
+
+    if (charId) avatar.ensureAvatar(charId).catch(() => {});
+
+    res.json({ ok: true, meme: await cdb.getMeme(code) });
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.includes('管理员口令') || msg.includes('无编辑权限')) return res.status(403).json({ error: '无编辑权限：需要管理员口令' });
+    res.status(500).json({ error: msg });
   }
-
-  // 角色：显式选择优先；未选时用「角色名」自动识别 / 建档
-  let charId = char || null;
-  if (!charId && String(title).trim()) charId = resolveCharacter(title, ipId);
-
-  db.prepare('UPDATE memes SET title=?, ip=?, char=?, emo=?, text=? WHERE code=?')
-    .run(String(title).trim(), ipId, charId, JSON.stringify(finalEmo), text || '', code);
-  classifier.refreshDict();
-
-  // 自动获取角色头像（编辑引入的新角色）
-  if (charId) avatar.ensureAvatar(charId).catch(() => {});
-
-  res.json({ ok: true, meme: hydrate(db.prepare(SELECT_MEME + ' WHERE m.code=?').get(code)) });
 });
 
-/* ---------- 手动上传角色头像（kivo 匹配不到时兜底，任何 IP 均可） ---------- */
-const avatarStorage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, path.join(__dirname, 'public', 'assets', 'img', 'chars')),
-  filename: (req, __, cb) => {
-    const ext = (path.extname(req.file?.originalname || '') || '.png').toLowerCase();
-    cb(null, req.params.id + ext);
-  },
-});
+/* ---------- 手动上传角色头像（仅限尚无头图的角色） ---------- */
 const avatarUpload = multer({
-  storage: avatarStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_, file, cb) => cb(null, /\.(jpe?g|png|webp)$/i.test(file.originalname)),
 });
 
 app.post('/api/chars/:id/avatar',
-  /* 预检：角色存在 + 尚无头图，通过后再让 multer 落盘（避免覆盖已有头图） */
-  (req, res, next) => {
-    const c = db.prepare('SELECT id, avatar FROM characters WHERE id=?').get(req.params.id);
-    if (!c) return res.status(404).json({ error: '角色不存在' });
-    if (c.avatar) return res.status(403).json({ error: '该角色已有头图，仅限未带头图的角色上传' });
-    next();
+  async (req, res, next) => {
+    try {
+      const c = await cdb.getChar(req.params.id);
+      if (!c) return res.status(404).json({ error: '角色不存在' });
+      if (c.avatar) return res.status(403).json({ error: '该角色已有头图，仅限未带头图的角色上传' });
+      next();
+    } catch (e) { res.status(500).json({ error: e.message }); }
   },
   avatarUpload.single('file'),
-  (req, res) => {
-    if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/webp 图片（≤5MB）' });
-    const rel = 'assets/img/chars/' + req.file.filename;
-    db.prepare('UPDATE characters SET avatar=?, is_new=0 WHERE id=?').run(rel, req.params.id);
-    classifier.refreshDict();
-    res.json({ ok: true, avatar: rel });
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: '请上传 jpg/png/webp 图片（≤5MB）' });
+      const ext = (path.extname(req.file.originalname) || '.png').toLowerCase().replace('.', '');
+      const url = await storage.saveAvatarImage(req.params.id, req.file.buffer, ext);
+      await cdb.updateCharAvatar(req.params.id, url);
+      res.json({ ok: true, avatar: url });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   }
 );
 
-/* ---------- SSR 详情页（SEO：爬虫不执行 JS 也能拿到完整内容） ---------- */
-const emoName = id => (db.prepare('SELECT name FROM emotions WHERE id=?').get(id) || {}).name || id;
-const ipRow = id => db.prepare('SELECT * FROM ips WHERE id=?').get(id) || { name: id, weight: 0.3 };
-
-function renderSSR(m, base) {
-  const ip = ipRow(m.ip);
-  const desc = `${m.title}｜${ip.name}${m.char_name ? ' · ' + m.char_name : ''}表情包。蔚蓝档案玩家共建 ba表情档案，${m.emo.map(emoName).join('、')}类表情，可直接下载使用。`;
-  const absImg = m.image_url ? base + m.image_url : base + '/assets/img/logo.png';
-  const related = allMemes().filter(x => x.code !== m.code && ((m.char && x.char === m.char) || x.emo.some(e => m.emo.includes(e)))).slice(0, 8);
+/* ---------- SSR 详情页（SEO） ---------- */
+async function renderSSR(m, base) {
+  const [emotions, ips, all] = await Promise.all([cdb.allEmotions(), cdb.allIps(), cdb.allMemes()]);
+  const emoMap = Object.fromEntries(emotions.map(e => [e.id, e.name]));
+  const ipMap = Object.fromEntries(ips.map(i => [i.id, i]));
+  const ip = ipMap[m.ip] || { name: m.ip, weight: 0.3 };
+  const desc = `${m.title}｜${ip.name}${m.char_name ? ' · ' + m.char_name : ''}表情包。蔚蓝档案玩家共建 ba表情档案，${m.emo.map(id => emoMap[id] || id).join('、')}类表情，可直接下载使用。`;
+  const img = absImg(m.image_url, base);
+  const related = all.filter(x => x.code !== m.code && ((m.char && x.char === m.char) || x.emo.some(e => m.emo.includes(e)))).slice(0, 8);
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -409,17 +306,17 @@ function renderSSR(m, base) {
 <meta property="og:type" content="website">
 <meta property="og:title" content="${esc(m.title)} - ba表情档案">
 <meta property="og:description" content="${esc(desc)}">
-<meta property="og:image" content="${absImg}">
+<meta property="og:image" content="${img}">
 <meta property="og:url" content="${base}/meme/${esc(m.code)}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="${absImg}">
+<meta name="twitter:image" content="${img}">
 <link rel="icon" type="image/png" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="/assets/css/tokens.css">
 <link rel="stylesheet" href="/assets/css/components.css">
 <script type="application/ld+json">${JSON.stringify({
     '@context': 'https://schema.org', '@type': 'ImageObject',
     name: m.title, description: desc,
-    contentUrl: absImg, thumbnailUrl: absImg,
+    contentUrl: img, thumbnailUrl: img,
     keywords: `${m.text || ''},${ip.name},蔚蓝档案表情包`,
     datePublished: (m.created_at || '').slice(0, 10),
     license: '仅供个人学习与交流使用',
@@ -466,28 +363,32 @@ function renderSSR(m, base) {
 </html>`;
 }
 
-app.get('/meme/:code', (req, res) => {
-  const m = getMeme(req.params.code);
-  if (!m) return res.status(404).send('<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>档案不存在 - ba表情档案</title></head><body><div style="padding:60px;text-align:center;font-family:sans-serif"><h1>这份档案不存在</h1><p><a href="/">返回档案大厅</a></p></div></body></html>');
-  res.send(renderSSR(m, siteBase(req)));
+app.get('/meme/:code', async (req, res) => {
+  try {
+    const m = await cdb.getMeme(req.params.code);
+    if (!m) return res.status(404).send('<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>档案不存在 - ba表情档案</title></head><body><div style="padding:60px;text-align:center;font-family:sans-serif"><h1>这份档案不存在</h1><p><a href="/">返回档案大厅</a></p></div></body></html>');
+    res.send(await renderSSR(m, siteBase(req)));
+  } catch (e) { res.status(500).send('服务器错误'); }
 });
 
 /* ---------- sitemap.xml + robots.txt（SEO） ---------- */
-app.get('/sitemap.xml', (req, res) => {
-  const base = siteBase(req);
-  const memes = db.prepare('SELECT code, created_at FROM memes').all();
-  const chars = db.prepare('SELECT DISTINCT m.char AS id FROM memes m WHERE m.char IS NOT NULL').all();
-  const urls = [
-    { loc: '/', lastmod: new Date().toISOString().slice(0, 10), priority: 1.0 },
-    { loc: '/search.html', lastmod: new Date().toISOString().slice(0, 10), priority: 0.8 },
-    { loc: '/about.html', lastmod: new Date().toISOString().slice(0, 10), priority: 0.5 },
-    ...memes.map(m => ({ loc: '/meme/' + m.code, lastmod: (m.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10), priority: 0.7 })),
-    ...chars.map(c => ({ loc: '/search.html?char=' + encodeURIComponent(c.id), lastmod: new Date().toISOString().slice(0, 10), priority: 0.6 })),
-  ];
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    urls.map(u => `  <url><loc>${base}${u.loc}</loc><lastmod>${u.lastmod}</lastmod><priority>${u.priority}</priority></url>`).join('\n') +
-    `\n</urlset>`;
-  res.type('application/xml').send(xml);
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const base = siteBase(req);
+    const memes = await cdb.allMemes();
+    const charIds = [...new Set(memes.map(m => m.char).filter(Boolean))];
+    const urls = [
+      { loc: '/', lastmod: new Date().toISOString().slice(0, 10), priority: 1.0 },
+      { loc: '/search.html', lastmod: new Date().toISOString().slice(0, 10), priority: 0.8 },
+      { loc: '/about.html', lastmod: new Date().toISOString().slice(0, 10), priority: 0.5 },
+      ...memes.map(m => ({ loc: '/meme/' + m.code, lastmod: (m.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10), priority: 0.7 })),
+      ...charIds.map(id => ({ loc: '/search.html?char=' + encodeURIComponent(id), lastmod: new Date().toISOString().slice(0, 10), priority: 0.6 })),
+    ];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      urls.map(u => `  <url><loc>${base}${u.loc}</loc><lastmod>${u.lastmod}</lastmod><priority>${u.priority}</priority></url>`).join('\n') +
+      `\n</urlset>`;
+    res.type('application/xml').send(xml);
+  } catch (e) { res.status(500).send('error'); }
 });
 
 app.get('/robots.txt', (req, res) => {
@@ -495,12 +396,11 @@ app.get('/robots.txt', (req, res) => {
 });
 
 /* ---------- 静态托管 ---------- */
-app.use('/uploads', express.static(UPLOAD_DIR));
+app.use('/uploads', express.static(path.join(__dirname, 'data', 'uploads')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`ba表情档案 后端已启动: http://localhost:${PORT}`);
-  // 后台补跑：给无头像角色自动获取头像
   avatar.ensureAllAvatars().then(done => {
     if (done.length) console.log('已自动补全角色头像:', done.join(', '));
   }).catch(() => {});
