@@ -1,0 +1,16 @@
+{
+  "name": "ba-meme-archive",
+  "version": "0.2.0",
+  "description": "ba表情档案 —— 蔚蓝档案表情包检索站",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "jimp": "^1.6.1",
+    "multer": "^2.4.0"
+  }
+}

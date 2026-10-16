@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ba表情档案 · 蔚蓝档案表情包一站式检索</title>
+<meta name="description" content="蔚蓝档案表情包专属档案馆。上传即自动识别IP与角色归类，支持按角色、关键词检索。作为蔚蓝档案玩家自建的非官方表情包索引站。">
+<meta name="keywords" content="蔚蓝档案,表情包,蔚蓝档案表情包,白子,星野,心夏,表情包下载">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+
+<!-- ============ 顶栏 ============ -->
+<header class="header">
+  <div class="container header__inner">
+    <a href="index.html" class="logo">
+      <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+      <span class="logo__text">
+        <span class="logo__zh">ba表情档案</span>
+        <span class="logo__en">BA Meme Archive</span>
+      </span>
+    </a>
+
+    <nav class="nav">
+      <a href="index.html" class="nav__link is-active">档案大厅</a>
+      <a href="#chars" class="nav__link">角色馆</a>
+      <a href="#latest" class="nav__link">最新收录</a>
+      <a href="about.html" class="nav__link">关于</a>
+    </nav>
+
+    <div class="header__search">
+      <div class="searchbox">
+        <svg class="searchbox__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+        </svg>
+        <input class="searchbox__input" type="search" placeholder="搜索角色、关键词…" aria-label="搜索表情档案">
+        <span class="searchbox__kbd">/</span>
+      </div>
+    </div>
+
+    <div class="header__actions">
+      <a href="upload.html" class="btn btn--sakura">
+        <svg class="btn__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        上传表情
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Hero 检索大厅 ============ -->
+<section class="hero">
+  <div class="container hero__inner">
+    <div class="hero__search">
+      <div class="searchbox">
+        <svg class="searchbox__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+        </svg>
+        <input class="searchbox__input" id="heroSearch" type="search" placeholder="搜角色、搜关键词…" aria-label="搜索表情档案">
+        <span class="searchbox__kbd">Enter</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 角色馆 ============ -->
+<section class="section section--tight" id="chars">
+  <div class="container">
+    <div class="section__head">
+      <h2 class="section__title">角色馆</h2>
+      <p class="section__desc">点角色直接进档案 · 点击头像下方查看该角色全部表情</p>
+      <a href="#" class="section__more">全部角色 →</a>
+    </div>
+    <div class="char-grid" id="charGrid"></div>
+  </div>
+</section>
+
+<!-- ============ 最新档案 ============ -->
+<section class="section" id="latest">
+  <div class="container">
+    <div class="section__head">
+      <h2 class="section__title">最新收录</h2>
+      <p class="section__desc">蔚蓝档案表情已自动置顶优先显示</p>
+      <a href="search.html" class="section__more">进入完整档案库 →</a>
+    </div>
+
+    <div class="layout">
+      <!-- 侧栏筛选 -->
+      <aside class="sidebar">
+        <button class="sidebar__toggle" type="button">
+          <span>筛选</span>
+          <svg class="caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="sidebar__body">
+          <div>
+            <div class="filter__title">所属 IP</div>
+            <div id="filterIP"></div>
+          </div>
+          <div>
+            <div class="filter__title">角色</div>
+            <div id="filterChar"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 档案列表 -->
+      <div>
+        <div class="toolbar">
+          <span class="toolbar__count">共 <b id="resultCount">0</b> 份档案</span>
+          <div class="toolbar__right">
+            <div class="segmented" id="sortSeg">
+              <button class="segmented__btn is-active" data-sort="relevance">推荐</button>
+              <button class="segmented__btn" data-sort="hot">最热</button>
+              <button class="segmented__btn" data-sort="new">最新</button>
+              <button class="segmented__btn" data-sort="conf">识别最准</button>
+            </div>
+            <select class="sort-select" id="ipJump" aria-label="IP 快速切换">
+              <option value="all">全部 IP</option>
+              <option value="ba">蔚蓝档案</option>
+              <option value="azur">碧蓝航线</option>
+              <option value="genshin">原神</option>
+              <option value="none">通用表情</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid" id="memeGrid"></div>
+        <div class="loadmore">
+          <button class="btn btn--ghost" id="loadMore">加载更多档案 ↓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 上传 CTA ============ -->
+<section class="section section--tight">
+  <div class="container">
+    <div class="panel" style="background:linear-gradient(135deg,var(--brand-600),var(--brand-800));border:none;color:#fff;padding:var(--sp-7);text-align:center">
+      <h2 class="section__title" style="color:#fff;justify-content:center;font-size:var(--fs-h1)">
+        <span style="background:none;width:auto;height:auto"></span>
+        你手机里那张梗图，值得被收录
+      </h2>
+      <p style="margin:var(--sp-4) auto var(--sp-5);max-width:560px;opacity:.88">
+        上传后 AI 会自动识别这张图属于哪个 IP、哪个角色，直接放进对应档案位。
+        你只需要拖进来 —— 剩下的交给识图模型。
+      </p>
+      <a href="upload.html" class="btn btn--sakura btn--lg">立即上传表情包</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 页脚 ============ -->
+<footer class="footer">
+  <div class="container footer__inner">
+    <div>
+      <div class="logo" style="margin-bottom:var(--sp-3)">
+        <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+        <span class="logo__text"><span class="logo__zh">ba表情档案</span>
+        <span class="logo__en">BA Meme Archive</span></span>
+      </div>
+      <p class="footer__note">
+        本站为玩家自建的非官方索引站，与 Yostar 无隶属关系。<br>
+        图片版权归原作者所有，仅作梗图索引与检索用途。
+      </p>
+    </div>
+    <div class="footer__links">
+      <a class="footer__link" href="about.html">关于本站</a>
+      <a class="footer__link" href="upload.html">上传规范</a>
+      <a class="footer__link" href="report.html">侵权反馈</a>
+      <a class="footer__link" href="#">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/data.js"></script>
+<script>
+const { $, CHARS, MEMES, UI } = window;
+const { ipBadge, avatarStyle, search, cardHTML, favs, charOf, charCatalog, charAvatarHTML, charDisplayName, emoOf } = UI;
+
+let state = { query:'', ip:'all', char:'all', emo:'all', sort:'relevance', limit: 12 };
+
+/* ---- 角色馆（由已收录表情包动态派生，新角色出现即自动建档） ---- */
+$('#charGrid').innerHTML = charCatalog().map(c => {
+  return `
+  <a class="char-card" data-char="${c.id}" href="search.html?char=${c.id}">
+    <span class="char-card__avatar" style="${avatarStyle(c)}">${charAvatarHTML(c)}</span>
+    <span class="char-card__name">${charDisplayName(c)}${c.isNew ? ' <i class="char-card__new">新</i>' : ''}</span>
+    <span class="char-card__count">${c.count} 份</span>
+  </a>`;
+}).join('');
+
+$('#charGrid').addEventListener('click', e => {
+  const card = e.target.closest('.char-card');
+  if (!card) return;
+  location.href = 'search.html?char=' + card.dataset.char;
+});
+
+/* ---- 筛选器 ---- */
+function buildFilters() {
+  const ipList = [{id:'all',name:'全部 IP'}, {id:'ba',name:'蔚蓝档案'}, {id:'azur',name:'碧蓝航线'},
+    {id:'genshin',name:'原神'}, {id:'hk3',name:'崩坏3'}, {id:'arknights',name:'明日方舟'}, {id:'none',name:'通用表情'}];
+  $('#filterIP').innerHTML = ipList.map(p => {
+    const cnt = p.id==='all' ? MEMES.length : MEMES.filter(m=>m.ip===p.id).length;
+    return `<div class="filter__item ${state.ip===p.id?'is-active':''}" data-ip="${p.id}">
+      <span>${p.name}</span><span class="filter__count">${cnt}</span></div>`;
+  }).join('');
+
+  $('#filterChar').innerHTML = `<div class="filter__item ${state.char==='all'?'is-active':''}" data-char="all">
+      <span>全部角色</span><span class="filter__count">${MEMES.length}</span></div>` +
+    charCatalog().map(c => {
+      return `<div class="filter__item ${state.char===c.id?'is-active':''}" data-char="${c.id}">
+        <span>${charDisplayName(c)}${c.isNew ? ' <i class="char-card__new">新</i>' : ''}</span><span class="filter__count">${c.count}</span></div>`;
+    }).join('');
+}
+
+document.addEventListener('click', e => {
+  const f = e.target.closest('.filter__item');
+  if (f) {
+    if (f.dataset.ip)   state.ip = f.dataset.ip;
+    if (f.dataset.char) state.char = f.dataset.char;
+    state.limit = 12;
+    buildFilters(); render();
+    document.getElementById('latest').scrollIntoView({behavior:'smooth'});
+    return;
+  }
+  const seg = e.target.closest('.segmented__btn');
+  if (seg) {
+    $$('.segmented__btn').forEach(b=>b.classList.remove('is-active'));
+    seg.classList.add('is-active');
+    state.sort = seg.dataset.sort; render();
+  }
+  const fav = e.target.closest('.card__fav');
+  if (fav) {
+    e.stopPropagation();
+    const on = favs.toggle(fav.closest('.card').dataset.code);
+    fav.classList.toggle('is-on', on);
+    UI.toast(on ? '已收藏' : '已取消收藏');
+  }
+  const card = e.target.closest('.card');
+  if (card) location.href = 'detail.html?code=' + card.dataset.code;
+});
+
+/* ---- 渲染 ---- */
+function render() {
+  const list = search(state);
+  $('#resultCount').textContent = list.length;
+  const shown = list.slice(0, state.limit);
+  $('#memeGrid').innerHTML = shown.length
+    ? shown.map(cardHTML).join('')
+    : `<div class="empty" style="grid-column:1/-1">
+         <div class="empty__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:44px;height:44px"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div>
+         <div class="empty__title">档案室里没有这一份</div>
+         <div class="empty__desc">换个关键词，或者——你来上传第一份</div>
+         <a href="upload.html" class="btn btn--primary">去上传</a>
+       </div>`;
+  $('#loadMore').style.display = list.length > state.limit ? '' : 'none';
+}
+
+$('#loadMore').addEventListener('click', () => { state.limit += 12; render(); });
+$('#ipJump').addEventListener('change', e => {
+  state.ip = e.target.value; state.limit = 12; buildFilters(); render();
+});
+
+/* ---- Hero 搜索 ---- */
+function doSearch(q) {
+  location.href = 'search.html?q=' + encodeURIComponent(q);
+}
+$('#heroSearch').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(e.target.value.trim()); });
+$('#heroSearch').addEventListener('keydown', e => {
+  if (e.key === '/' ) {}
+});
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault(); $('#heroSearch').focus();
+  }
+  if (e.key === 'Enter' && document.activeElement === $('#heroSearch')) doSearch($('#heroSearch').value.trim());
+});
+
+/* ---- 顶栏搜索同步跳转 ---- */
+$$('.header__search .searchbox__input').forEach(inp => {
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(inp.value.trim()); });
+});
+
+
+/* 移动端筛选折叠 */
+document.querySelector('.sidebar__toggle')?.addEventListener('click', () => {
+  document.querySelector('.sidebar')?.classList.toggle('is-open');
+});
+buildFilters(); render();
+</script>
+</body>
+</html>

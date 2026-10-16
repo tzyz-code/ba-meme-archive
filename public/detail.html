@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>表情档案详情 · ba表情档案</title>
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<script type="application/ld+json" id="ldjson"></script>
+</head>
+<body>
+
+<header class="header">
+  <div class="container header__inner">
+    <a href="index.html" class="logo">
+      <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+      <span class="logo__text"><span class="logo__zh">ba表情档案</span><span class="logo__en">BA Meme Archive</span></span>
+    </a>
+    <nav class="nav">
+      <a href="index.html" class="nav__link">档案大厅</a>
+      <a href="index.html#chars" class="nav__link">角色馆</a>
+    </nav>
+    <div class="header__search"></div>
+    <div class="header__actions"><a href="upload.html" class="btn btn--ghost">+ 上传表情</a></div>
+  </div>
+</header>
+
+<main class="section section--tight">
+  <div class="container">
+    <nav class="crumb" id="crumb"></nav>
+
+    <div class="detail">
+      <div>
+        <div class="detail__stage">
+          <div class="detail__img" id="stageImg"></div>
+        </div>
+
+        <div class="action-row mt-4">
+          <button class="btn btn--primary" id="dlBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> 下载原图</button>
+          <button class="btn btn--ghost" id="copyBtn">复制链接</button>
+          <button class="btn btn--ghost" id="copyBdBtn">复制梗图文字</button>
+          <button class="btn btn--ghost" id="editBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;vertical-align:-3px"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> 编辑档案</button>
+        </div>
+
+        <div class="panel mt-5" id="editPanel" style="display:none">
+          <div class="panel__title">编辑档案</div>
+          <div id="editForm"></div>
+        </div>
+
+        <div class="panel mt-5">
+          <div class="panel__title">使用说明</div>
+          <p class="text-sm text-mute" style="line-height:1.8">
+            玩家自建的表情索引条目，标注了所属 IP、角色与搜索关键词，方便按需检索。
+            蔚蓝档案相关条目在本站搜索中获得优先展示。
+            图片版权归原作者所有，请勿用于商业用途；如权利人认为需要下架，请通过页脚渠道联系我们，将立即处理。
+          </p>
+        </div>
+      </div>
+
+      <aside class="detail__side">
+        <div class="panel">
+          <div class="panel__title">档案信息</div>
+          <h1 style="font-size:var(--fs-h2);font-weight:var(--fw-black);line-height:1.25;margin-bottom:var(--sp-3)" id="dTitle"></h1>
+          <div class="flex gap-2 wrap" id="dBadges"></div>
+
+          <div class="meta-list mt-5">
+            <div class="meta-list__row"><span class="meta-list__key">所属 IP</span><span class="meta-list__val" id="dIp"></span></div>
+            <div class="meta-list__row"><span class="meta-list__key">角色</span><span class="meta-list__val" id="dChar"></span></div>
+            <div class="meta-list__row"><span class="meta-list__key">搜索关键词</span><span class="meta-list__val" id="dText"></span></div>
+            <div class="meta-list__row"><span class="meta-list__key">浏览量</span><span class="meta-list__val mono" id="dViews"></span></div>
+            <div class="meta-list__row"><span class="meta-list__key">归档时间</span><span class="meta-list__val" id="dDate"></span></div>
+            <div class="meta-list__row"><span class="meta-list__key">归类方式</span><span class="meta-list__val" id="dAuto"></span></div>
+          </div>
+
+          <div class="mt-5" id="confBox">
+            <div class="conf">
+              <span class="text-xs fw-bold text-mute">识别置信度</span>
+              <span class="conf__bar"><span class="conf__fill" id="confFill" style="width:0"></span></span>
+              <span class="conf__num" id="confNum">0%</span>
+            </div>
+            <p class="text-xs text-mute mt-4">归类如有偏差？<a href="#" style="color:var(--brand-600);font-weight:700">提交修正</a> —— 修正后的档案会被优先展示</p>
+          </div>
+        </div>
+
+        <div class="panel" style="background:var(--brand-50);border-color:var(--brand-200)">
+          <div class="panel__title" style="color:var(--brand-700)">搜索权重</div>
+          <p class="text-sm text-mute" style="line-height:1.8">
+            该档案当前排序得分中，IP 权重贡献 <b id="ipWeightTxt" style="color:var(--brand-700)"></b>。
+            蔚蓝档案条目权重为 1.0，同等相关度下排序始终靠前。
+          </p>
+        </div>
+      </aside>
+    </div>
+
+    <section class="section section--tight">
+      <div class="section__head"><h2 class="section__title">相关档案</h2></div>
+      <div class="grid" id="relGrid"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <p class="footer__note">本站为玩家自建的非官方蔚蓝档案表情索引站，与 Yostar 无隶属关系。图片版权归原作者所有。</p>
+    <div class="footer__links">
+      <a class="footer__link" href="about.html">关于</a>
+      <a class="footer__link" href="report.html">侵权反馈</a>
+      <a class="footer__link" href="index.html">返回档案大厅</a>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/data.js"></script>
+<script>
+const { $, $$, CHARS, UI } = window;
+const { getMeme, ipBadge, cardHTML, charOf, charAvatarHTML, charDisplayName, ipOf } = UI;
+
+const code = new URLSearchParams(location.search).get('code') || 'BA-0001';
+const data = getMeme(code);
+const m = data.meme;
+const ch = charOf(m.char);
+const ip = ipOf(m.ip);
+
+/* ---- SEO：动态 meta + 结构化数据（canonical 指向服务端渲染版 /meme/:code）---- */
+const canon = document.createElement('link');
+canon.rel = 'canonical';
+canon.href = location.origin + '/meme/' + encodeURIComponent(code);
+document.head.appendChild(canon);
+
+document.title = `${m.title} - ${ch ? ch.name + ' ' : ''}${ip.name}表情包 - ba表情档案`;
+document.querySelector('meta[name="description"]')?.remove();
+const meta = document.createElement('meta');
+meta.name = 'description';
+meta.content = `${m.title}｜${ip.name}${ch ? ' · ' + ch.name : ''}表情包。蔚蓝档案玩家共建ba表情档案，关键词：${m.text || '表情包'}，可直接下载使用。`;
+document.head.appendChild(meta);
+
+$('#ldjson').textContent = JSON.stringify({
+  '@context':'https://schema.org','@type':'ImageObject',
+  name: m.title, description: meta.content,
+  contentUrl: location.href, keywords: `${m.text},${ip.name},蔚蓝档案表情包`,
+  datePublished: new Date(Date.now()-m.d*864e5).toISOString().slice(0,10),
+  license:'仅供个人学习与交流使用'
+});
+
+/* ---- 渲染 ---- */
+$('#crumb').innerHTML = `<a href="index.html">档案大厅</a><span class="crumb__sep">/</span>
+  <a href="search.html?ip=${m.ip}">${ip.name}</a>${ch?`<span class="crumb__sep">/</span><a href="search.html?char=${ch.id}">${ch.name}</a>`:''}
+  <span class="crumb__sep">/</span>`;
+
+$('#stageImg').innerHTML = m.imageUrl
+  ? `<img src="${m.imageUrl}" alt="${m.title}" style="width:100%;height:100%;object-fit:contain">`
+  : ch
+  ? charAvatarHTML(ch)
+  : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="width:120px;height:120px;opacity:.3"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 17l5-5 4 4 3-3 6 5"/></svg>`;
+$('#dTitle').textContent = m.title;
+$('#dBadges').innerHTML = ipBadge(m.ip) + (ch?`<span class="tag tag--char">${charDisplayName(ch)}</span>`:'');
+$('#dIp').innerHTML = ipBadge(m.ip);
+$('#dChar').textContent = ch ? `${ch.name} / ${ch.en}` : '— 无角色 —';
+$('#dText').textContent = m.text || '—';
+$('#dViews').textContent = m.views.toLocaleString() + ' 次';
+$('#dDate').textContent = `${m.d} 天前`;
+$('#dAuto').innerHTML = m.auto
+  ? `<span class="tag tag--auto">⌁ AI 自动归类</span>`
+  : `<span class="tag">人工确认</span>`;
+
+setTimeout(()=>{ $('#confFill').style.width = m.conf + '%'; }, 260);
+$('#confNum').textContent = m.conf + '%';
+$('#ipWeightTxt').textContent = (0.35 * ip.weight).toFixed(2) + ' 分（权重 ' + ip.weight.toFixed(2) + '）';
+
+$('#relGrid').innerHTML = data.related.map(cardHTML).join('');
+$('#relGrid').addEventListener('click', e => {
+  const fav = e.target.closest('.card__fav');
+  if (fav) { e.stopPropagation(); const on = UI.favs.toggle(fav.closest('.card').dataset.code); fav.classList.toggle('is-on', on); UI.toast(on?'已收藏':'已取消收藏'); return; }
+  const c = e.target.closest('.card'); if (c) location.href = 'detail.html?code=' + c.dataset.code;
+});
+
+$('#dlBtn').addEventListener('click', ()=>UI.toast('阶段2 接入存储后开始真实下载'));
+$('#copyBtn').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(location.href); UI.toast('链接已复制'); }catch{ UI.toast('复制失败，请手动复制'); } });
+$('#copyBdBtn').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(m.text); UI.toast('梗图文字已复制：'+m.text); }catch{ UI.toast('复制失败'); } });
+
+/* ---- 编辑档案 ---- */
+const IP_OPTIONS = Object.values(window.IP_DB)
+  .sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+  .map(ip => {
+    const suffix = ip.id === 'ba' ? '（本站主推）' : ip.id === 'none' ? '（无IP）' : '';
+    return `<option value="${ip.id}" ${ip.id === m.ip ? 'selected' : ''}>${ip.name}${suffix}</option>`;
+  }).join('');
+
+function buildEditForm() {
+  const curChar = m.char ? charOf(m.char) : null;
+  const needAvatar = curChar && !curChar.avatar;
+  $('#editForm').innerHTML = `
+    <div class="field"><label class="field__label">归档标题</label>
+      <input class="input" data-f="etitle" value="${m.title}"></div>
+    <div class="field"><label class="field__label">所属 IP</label>
+      <select class="input" data-f="eip">${IP_OPTIONS}</select></div>
+    <div class="field"><label class="field__label">角色</label>
+      <select class="input" data-f="echar">
+        <option value="">— 无角色 —</option>
+        ${CHARS.map(c => `<option value="${c.id}" ${m.char === c.id ? 'selected' : ''}>${charDisplayName(c)}</option>`).join('')}
+        <option value="__new__">＋ 新角色…</option>
+      </select>
+      <input class="input" data-f="enewchar" placeholder="输入新角色名" style="display:none;margin-top:8px"></div>
+    ${needAvatar ? `<div class="field"><label class="field__label">角色「${charDisplayName(curChar)}」还没有头像 — 上传一张（自动匹配失败时的兜底）</label>
+      <input type="file" class="input" data-f="eavatarfile" accept="image/png,image/jpeg,image/webp"></div>` : ''}
+    <div class="field"><label class="field__label">搜索关键词</label>
+      <input class="input" data-f="etext" value="${m.text || ''}"></div>
+    <div class="action-row mt-4">
+      <button class="btn btn--primary" data-act="esave">保存修改</button>
+      <button class="btn btn--ghost" data-act="ecancel">取消</button>
+    </div>`;
+}
+
+$('#editBtn').addEventListener('click', () => {
+  const panel = $('#editPanel');
+  const open = panel.style.display === 'none';
+  panel.style.display = open ? '' : 'none';
+  if (open) { buildEditForm(); panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+});
+
+$('#editPanel').addEventListener('change', e => {
+  if (e.target.matches('[data-f="echar"]')) {
+    $('#editPanel [data-f="enewchar"]').style.display = e.target.value === '__new__' ? '' : 'none';
+  }
+});
+
+$('#editPanel').addEventListener('click', e => {
+  const act = e.target.closest('[data-act]');
+  if (!act) return;
+  if (act.dataset.act === 'ecancel') { $('#editPanel').style.display = 'none'; return; }
+  if (act.dataset.act === 'esave') { saveEdit(act); }
+});
+
+async function saveEdit(btn) {
+  const title = $('#editPanel [data-f="etitle"]').value.trim();
+  if (!title) { UI.toast('请填写标题'); return; }
+  const ip = $('#editPanel [data-f="eip"]').value;
+  let char = $('#editPanel [data-f="echar"]').value;
+  if (char === '__new__') char = $('#editPanel [data-f="enewchar"]').value.trim() || null;
+  const text = $('#editPanel [data-f="etext"]').value.trim();
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/meme/' + m.code, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, ip, char, text }),
+    });
+    const j = await r.json();
+    if (!j.ok) { UI.toast(j.error || '保存失败'); btn.disabled = false; return; }
+    // 有头像文件时顺手上传（对最终角色 id）
+    const avFile = $('#editPanel [data-f="eavatarfile"]');
+    if (char && avFile && avFile.files[0]) {
+      const fd = new FormData();
+      fd.append('file', avFile.files[0]);
+      await fetch('/api/chars/' + encodeURIComponent(char) + '/avatar', { method: 'POST', body: fd });
+    }
+    UI.toast('已保存'); setTimeout(() => location.reload(), 500);
+  } catch (err) {
+    UI.toast('保存失败：' + err.message); btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>关于 · ba表情档案</title>
+<meta name="description" content="ba表情档案是一个由蔚蓝档案玩家自建的表情包索引站，上传即自动识别 IP 与角色归类。">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="container header__inner">
+    <a href="index.html" class="logo">
+      <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+      <span class="logo__text"><span class="logo__zh">ba表情档案</span><span class="logo__en">BA Meme Archive</span></span>
+    </a>
+    <nav class="nav"><a href="index.html" class="nav__link">档案大厅</a>
+      <a href="index.html#chars" class="nav__link">角色馆</a></nav>
+    <div class="header__search"></div>
+    <div class="header__actions"><a href="upload.html" class="btn btn--sakura">+ 上传表情</a></div>
+  </div>
+</header>
+
+<main class="section section--tight">
+  <div class="container" style="max-width:760px">
+
+    <h1 style="font-size:var(--fs-h1);font-weight:var(--fw-black);letter-spacing:-1px">关于ba表情档案</h1>
+    <p class="text-mute mt-4" style="line-height:1.9">
+      本站是一个由蔚蓝档案玩家自建的<strong>非官方</strong>表情包索引站。
+      我们把散落在群聊、论坛、截图里的梗图集中起来，做成一份可以搜索的"档案"。
+    </p>
+
+    <div class="panel mt-6">
+      <div class="panel__title">站点特色</div>
+      <div class="flex-col gap-4 mt-4">
+        <div class="flex gap-3">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex:none;color:var(--brand-600)"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>
+          <div><b>蔚蓝档案优先</b><p class="text-sm text-mute">站点以蔚蓝档案为主，相关表情在搜索中获得约 3.3 倍权重加成，同等相关度下永远排在最前。</p></div>
+        </div>
+        <div class="flex gap-3">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex:none;color:var(--brand-600)"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/><path d="M9 17h6"/></svg>
+          <div><b>自动归类</b><p class="text-sm text-mute">上传后由识图模型自动判定所属 IP 与角色，你只需确认即可入库。</p></div>
+        </div>
+        <div class="flex gap-3">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex:none;color:var(--brand-600)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+          <div><b>可被搜索引擎收录</b><p class="text-sm text-mute">每份档案都有独立可索引页面与结构化数据，搜角色名、梗名、编号都能直达。</p></div>
+        </div>
+        
+      </div>
+    </div>
+
+    <div class="panel mt-5">
+      <div class="panel__title">版权与立场</div>
+      <p class="text-sm text-mute" style="line-height:1.9">
+        本站与 Yostar 及《蔚蓝档案》官方无任何隶属或合作关系，仅作玩家间表情索引与检索用途。<br>
+        所有图片版权归原作者或相关权利人所有，站方仅作信息索引展示，不主张任何所有权。<br>
+        若权利人认为某条目需要移除，请通过下方渠道联系，我们会在核实后<strong>立即下架</strong>。
+      </p>
+    </div>
+
+    <div class="panel mt-5">
+      <div class="panel__title">排序规则说明</div>
+      <p class="text-sm text-mute" style="line-height:1.9">
+        搜索排序采用加权公式：<code class="mono" style="background:var(--ink-100);padding:2px 6px;border-radius:4px">最终分 = 文本相关性 + 0.35×IP权重 + 0.20×热度 + 0.15×时效 + 0.03×置信度</code>。
+        其中 IP 权重：蔚蓝档案 1.00 / 其它游戏 0.30 / 通用表情 0.10。
+      </p>
+    </div>
+
+    <div class="action-row mt-6">
+      <a href="upload.html" class="btn btn--primary btn--lg">上传第一份档案</a>
+      <a href="index.html" class="btn btn--ghost btn--lg">返回档案大厅</a>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <p class="footer__note">本站为玩家自建的非官方索引站，与 Yostar 无隶属关系。图片版权归原作者所有。</p>
+    <div class="footer__links">
+      <a class="footer__link" href="index.html">档案大厅</a>
+      <a class="footer__link" href="report.html">侵权反馈</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

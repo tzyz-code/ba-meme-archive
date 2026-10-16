@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上传表情包 · ba表情档案</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="container header__inner">
+    <a href="index.html" class="logo">
+      <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+      <span class="logo__text"><span class="logo__zh">ba表情档案</span><span class="logo__en">BA Meme Archive</span></span>
+    </a>
+    <nav class="nav">
+      <a href="index.html" class="nav__link">档案大厅</a>
+      <a href="index.html#chars" class="nav__link">角色馆</a>
+      <a href="about.html" class="nav__link">关于</a>
+    </nav>
+    <div class="header__search"></div>
+    <div class="header__actions"><span class="ip-badge ip-badge--ba">蔚蓝档案优先</span></div>
+  </div>
+</header>
+
+<main class="section section--tight">
+  <div class="container" style="max-width:940px">
+
+    <nav class="crumb">
+      <a href="index.html">档案大厅</a><span class="crumb__sep">/</span><span>上传入库</span>
+    </nav>
+
+    <div style="text-align:center;margin-bottom:var(--sp-6)">
+      <h1 style="font-size:var(--fs-h1);font-weight:var(--fw-black);letter-spacing:-1px">上传表情，入库归档</h1>
+      <p class="text-mute mt-4" style="max-width:560px;margin-inline:auto">
+        拖进来就行。<b>识图模型会自动判断</b>这张图属于哪个 IP、哪个角色，
+        你只要确认一下就完成了。
+      </p>
+    </div>
+
+    <!-- 拖拽区 -->
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone__ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        </svg>
+      </div>
+      <div class="dropzone__title">把表情拖到这里，或点击选择文件</div>
+      <div class="dropzone__hint">支持 JPG / PNG / GIF / WebP · 单张 ≤ 10MB · 支持批量</div>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    </div>
+
+    <!-- 上传队列 -->
+    <div id="queue" class="mt-6"></div>
+
+    <div class="panel mt-6" style="background:var(--brand-50);border-color:var(--brand-200)">
+      <div class="panel__title" style="color:var(--brand-700)">上传规范</div>
+      <ul class="text-sm text-mute flex-col gap-1" style="line-height:1.8">
+        <li>· 请勿上传侵权、涉黄、政治敏感或攻击性内容</li>
+        <li>· 尽量使用原图画质，压缩会损失识别准确率</li>
+        <li>· AI 识别结果<span class="tag tag--auto">⌁ 自动</span>可随时手动修正，修正后的档案会被优先展示</li>
+        <li>· 蔚蓝档案相关表情会因站点主权重获得更多曝光</li>
+      </ul>
+    </div>
+
+  </div>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script>
+const { $, CHARS, UI } = window;
+const { charDisplayName } = UI;
+
+/* IP 下拉选项（后端元数据动态生成，BA 置顶） */
+const IP_OPTIONS = Object.values(window.IP_DB)
+  .sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+  .map(ip => {
+    const suffix = ip.id === 'ba' ? '（本站主推）' : ip.id === 'none' ? '（无IP）' : '';
+    return `<option value="${ip.id}">${ip.name}${suffix}</option>`;
+  }).join('');
+
+function defaultTitle(name) {
+  return name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || '未命名档案';
+}
+
+let uid = 0;
+const items = [];
+
+/* ---- 真实上传 → 后端识图 → 返回识别结果 ---- */
+async function addFile(file) {
+  const id = ++uid;
+  const item = { id, file, url: URL.createObjectURL(file), name: file.name,
+                 uploading: true, done: false, result: null, uploadId: null, error: null };
+  items.push(item);
+  render();
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || '上传失败');
+    item.uploadId = j.uploadId;
+    item.serverUrl = j.url;
+    item.result = j.result;
+    item.uploading = false;
+    item.done = true;
+    render();
+    UI.toast(j.result.auto ? '识别完成，确认后即可入库' : '置信度较低，请人工校正后入库');
+  } catch (e) {
+    item.uploading = false;
+    item.error = e.message;
+    render();
+  }
+}
+
+/* 重新识别：把用户已填的标题/关键词作为 hint 再传一次 */
+async function redo(item, row) {
+  const title = row.querySelector('[data-f="title"]').value.trim();
+  const text  = row.querySelector('[data-f="text"]').value.trim();
+  item.uploading = true; item.done = false; item.error = null;
+  render();
+  try {
+    const fd = new FormData();
+    fd.append('file', item.file);
+    fd.append('hint', title + ' ' + text);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || '识别失败');
+    // 换用新文件，删除旧暂存
+    if (item.uploadId) fetch('/api/upload/' + item.uploadId, { method: 'DELETE' });
+    item.uploadId = j.uploadId;
+    item.serverUrl = j.url;
+    item.result = j.result;
+    item.uploading = false; item.done = true;
+    render();
+    UI.toast('已重新识别');
+  } catch (e) {
+    item.uploading = false; item.error = e.message;
+    render();
+  }
+}
+
+function render() {
+  const host = $('#queue');
+  if (!items.length) { host.innerHTML = ''; return; }
+
+  host.innerHTML = items.map(it => {
+    const r = it.result;
+    const progress = it.done ? 100 : it.uploading ? 62 : 0;
+    const msg = it.error ? ('上传失败：' + it.error)
+              : it.uploading ? '识图模型推理中（匹配 IP 与角色库）…'
+              : it.done ? '识别完成，请确认或校正' : '';
+
+    const body = it.error ? `
+      <div class="progress-msg" style="color:var(--red-500,#d33)">
+        <span>${msg}</span>
+        <button class="btn btn--ghost btn--sm ml-auto" data-act="remove">移除</button>
+      </div>` : it.uploading ? `
+      <div class="progress"><div class="progress__bar" style="width:${progress}%"></div></div>
+      <div class="progress-msg"><span class="spinner"></span><span>${msg}</span></div>` : `
+      <div class="ai-result">
+        <div class="ai-result__head">
+          <span class="tag tag--auto">⌁ ${r.auto ? 'AI 自动归类' : '待人工校正'}</span>
+          <span>置信度 ${r.conf}%</span>
+          <span class="text-xs text-mute">${r.provider === 'heuristic' ? '启发式识别' : r.provider}</span>
+          <button class="ml-auto text-xs" style="color:var(--brand-600);font-weight:700" data-act="redo">重新识别</button>
+        </div>
+        <div class="field">
+          <label class="field__label">归档标题（必填）</label>
+          <input class="input" data-f="title" value="${defaultTitle(it.name)}">
+        </div>
+        <div class="field">
+          <label class="field__label">所属 IP</label>
+          <select class="input" data-f="ip">${IP_OPTIONS}</select>
+        </div>
+        <div class="field">
+          <label class="field__label">角色（可改，新角色将自动建档）</label>
+          <select class="input" data-f="char">
+            <option value="">— 无角色 —</option>
+            ${CHARS.map(c => `<option value="${c.id}" ${r.char === c.id ? 'selected' : ''}>${charDisplayName(c)}</option>`).join('')}
+            <option value="__new__">＋ 新角色…</option>
+          </select>
+          <input class="input" data-f="newchar" placeholder="输入新角色名（如：凯伊），入库后自动建目录" style="display:none;margin-top:8px">
+        </div>
+        <div class="field">
+          <label class="field__label">搜索关键词（描述这张图的用途，帮助检索与收录）</label>
+          <input class="input" data-f="text" value="">
+        </div>
+        <div class="action-row mt-5">
+          <button class="btn btn--primary" data-act="save">确认入库</button>
+          <button class="btn btn--ghost" data-act="remove">丢弃</button>
+        </div>
+      </div>`;
+
+    return `
+    <div class="upload-item" data-id="${it.id}">
+      <div class="upload-item__thumb"><img src="${it.url}" alt=""></div>
+      <div class="upload-item__body">
+        <div class="upload-item__name">${it.name}</div>
+        ${body}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---- 交互 ---- */
+const dz = $('#dropzone');
+const fi = $('#fileInput');
+dz.addEventListener('click', () => fi.click());
+fi.addEventListener('change', e => { Array.from(e.target.files).forEach(addFile); e.target.value = ''; });
+
+['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('is-over'); }));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('is-over'); }));
+dz.addEventListener('drop', e => Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(addFile));
+
+$('#queue').addEventListener('click', async e => {
+  const act = e.target.closest('[data-act]');
+  if (!act) return;
+  const row = act.closest('.upload-item');
+  const id = +row.dataset.id;
+  const idx = items.findIndex(x => x.id === id);
+  const it = items[idx];
+  if (!it) return;
+
+  if (act.dataset.act === 'redo')  { redo(it, row); }
+  if (act.dataset.act === 'remove') {
+    if (it.uploadId) fetch('/api/upload/' + it.uploadId, { method: 'DELETE' });
+    URL.revokeObjectURL(it.url);
+    items.splice(idx, 1);
+    render();
+  }
+  if (act.dataset.act === 'save') {
+    const title = row.querySelector('[data-f="title"]').value.trim();
+    if (!title) { UI.toast('请填写归档标题'); return; }
+    let char = row.querySelector('[data-f="char"]').value;
+    if (char === '__new__') char = row.querySelector('[data-f="newchar"]').value.trim() || null;
+    const ip   = row.querySelector('[data-f="ip"]').value;
+    const text = row.querySelector('[data-f="text"]').value.trim();
+    act.disabled = true;
+    try {
+      const r = await fetch('/api/memes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: it.uploadId, title, ip, char, text,
+                               auto: it.result.auto, conf: it.result.conf }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        UI.toast('已入库：' + j.meme.code);
+        setTimeout(() => { location.href = 'detail.html?code=' + j.meme.code; }, 600);
+      } else {
+        UI.toast(j.error || '入库失败');
+        act.disabled = false;
+      }
+    } catch (err) {
+      UI.toast('入库失败：' + err.message);
+      act.disabled = false;
+    }
+  }
+});
+
+/* 角色：选「新角色」时显示输入框 */
+$('#queue').addEventListener('change', e => {
+  if (e.target.matches('[data-f="char"]')) {
+    const row = e.target.closest('.upload-item');
+    row.querySelector('[data-f="newchar"]').style.display = e.target.value === '__new__' ? '' : 'none';
+  }
+});
+</script>
+</body>
+</html>

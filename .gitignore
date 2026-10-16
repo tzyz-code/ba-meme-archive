@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# runtime data (SQLite database, uploaded images, caches)
+data/
+
+# local debris
+.chrome-tmp/
+*.log
+.DS_Store
+Thumbs.db
+docs/*.png
+docs/kivo-sitemap.xml
+docs/kivo-sitemap.xml

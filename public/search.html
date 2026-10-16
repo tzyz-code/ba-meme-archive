@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>搜索结果 · ba表情档案</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="container header__inner">
+    <a href="index.html" class="logo">
+      <img class="logo__mark" src="assets/img/logo.png" alt="ba表情档案" style="object-fit:cover">
+      <span class="logo__text"><span class="logo__zh">ba表情档案</span><span class="logo__en">BA Meme Archive</span></span>
+    </a>
+    <nav class="nav">
+      <a href="index.html" class="nav__link">档案大厅</a>
+      <a href="index.html#chars" class="nav__link">角色馆</a>
+    </nav>
+    <div class="header__search">
+      <div class="searchbox">
+        <svg class="searchbox__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input class="searchbox__input" id="topSearch" type="search" placeholder="搜索角色、关键词…" aria-label="搜索">
+      </div>
+    </div>
+    <div class="header__actions">
+      <a href="upload.html" class="btn btn--sakura">+ 上传表情</a>
+    </div>
+  </div>
+</header>
+
+<main class="section section--tight">
+  <div class="container">
+    <nav class="crumb">
+      <a href="index.html">档案大厅</a><span class="crumb__sep">/</span>
+      <span>搜索结果</span>
+    </nav>
+
+    <div class="panel" style="margin-bottom:var(--sp-5);padding:var(--sp-5) var(--sp-6)">
+      <div class="searchbox">
+        <svg class="searchbox__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input class="searchbox__input" id="mainSearch" type="search"
+               style="height:52px;font-size:var(--fs-h3);padding-left:52px"
+               placeholder="搜索角色 / 关键词 / 档案编号 / 梗名" aria-label="搜索表情档案">
+      </div>
+      <p class="text-xs text-mute mt-4" id="algoNote">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 排序说明：蔚蓝档案内容享有 <b>×3.3 权重加成</b>，同等相关度下永远优先展示
+      </p>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <button class="sidebar__toggle" type="button">
+          <span>筛选</span>
+          <svg class="caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="sidebar__body">
+          <div><div class="filter__title">所属 IP</div><div id="filterIP"></div></div>
+          <div><div class="filter__title">角色</div><div id="filterChar"></div></div>
+        </div>
+      </aside>
+
+      <div>
+        <div class="toolbar">
+          <span class="toolbar__count">找到 <b id="resultCount">0</b> 份档案</span>
+          <div class="toolbar__right">
+            <div class="segmented" id="sortSeg">
+              <button class="segmented__btn is-active" data-sort="relevance">推荐</button>
+              <button class="segmented__btn" data-sort="hot">最热</button>
+              <button class="segmented__btn" data-sort="new">最新</button>
+              <button class="segmented__btn" data-sort="conf">识别最准</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid" id="memeGrid"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script>
+const { $, CHARS, MEMES, UI } = window;
+const { search, cardHTML, favs, charCatalog, charDisplayName } = UI;
+
+const params = new URLSearchParams(location.search);
+let state = {
+  query: params.get('q') || '',
+  ip: params.get('ip') || 'all',
+  char: params.get('char') || 'all',
+  emo: params.get('emo') || 'all',
+  sort: 'relevance', limit: 12
+};
+
+$('#mainSearch').value = state.query;
+$('#topSearch').value = state.query;
+
+function buildFilters() {
+  const ipList = [{id:'all',name:'全部 IP'},{id:'ba',name:'蔚蓝档案'},{id:'azur',name:'碧蓝航线'},
+    {id:'genshin',name:'原神'},{id:'hk3',name:'崩坏3'},{id:'arknights',name:'明日方舟'},{id:'none',name:'通用表情'}];
+  $('#filterIP').innerHTML = ipList.map(p=>{
+    const c = p.id==='all'?MEMES.length:MEMES.filter(m=>m.ip===p.id).length;
+    return `<div class="filter__item ${state.ip===p.id?'is-active':''}" data-ip="${p.id}"><span>${p.name}</span><span class="filter__count">${c}</span></div>`;
+  }).join('');
+
+  $('#filterChar').innerHTML = `<div class="filter__item ${state.char==='all'?'is-active':''}" data-char="all"><span>全部角色</span><span class="filter__count">${MEMES.length}</span></div>`+
+    charCatalog().map(c=>{
+      return `<div class="filter__item ${state.char===c.id?'is-active':''}" data-char="${c.id}"><span>${charDisplayName(c)}${c.isNew ? ' <i class="char-card__new">新</i>' : ''}</span><span class="filter__count">${c.count}</span></div>`;
+    }).join('');
+}
+
+document.addEventListener('click', e => {
+  const f = e.target.closest('.filter__item');
+  if (f) {
+    if (f.dataset.ip) state.ip = f.dataset.ip;
+    if (f.dataset.char) state.char = f.dataset.char;
+    state.limit = 12;
+    buildFilters(); render(); return;
+  }
+  const seg = e.target.closest('.segmented__btn');
+  if (seg) {
+    document.querySelectorAll('.segmented__btn').forEach(b=>b.classList.remove('is-active'));
+    seg.classList.add('is-active'); state.sort = seg.dataset.sort; render();
+  }
+  const fav = e.target.closest('.card__fav');
+  if (fav) {
+    e.stopPropagation();
+    const on = favs.toggle(fav.closest('.card').dataset.code);
+    fav.classList.toggle('is-on', on);
+    UI.toast(on?'已收藏':'已取消收藏'); return;
+  }
+  const card = e.target.closest('.card');
+  if (card) location.href = 'detail.html?code=' + card.dataset.code;
+});
+
+function render() {
+  const list = search(state);
+  $('#resultCount').textContent = list.length;
+  const q = state.query;
+  const head = q ? `「<b>${q}</b>」` : '';
+  $('#memeGrid').innerHTML = list.length
+    ? list.slice(0, state.limit).map(cardHTML).join('')
+    : `<div class="empty" style="grid-column:1/-1">
+         <div class="empty__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:44px;height:44px"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></div>
+         <div class="empty__title">没搜到 ${head}</div>
+         <div class="empty__desc">换个关键词试试，或者亲手上传一份，填补这个空白</div>
+         <a href="upload.html" class="btn btn--primary">上传这张图</a>
+       </div>`;
+}
+
+function doSearch(q) {
+  state.query = q; state.limit = 12;
+  $('#mainSearch').value = q; $('#topSearch').value = q;
+  render();
+  history.replaceState(null, '', '?q=' + encodeURIComponent(q));
+}
+$('#mainSearch').addEventListener('keydown', e => { if (e.key==='Enter') doSearch(e.target.value.trim()); });
+$('#topSearch').addEventListener('keydown', e => { if (e.key==='Enter') { location.href='search.html?q='+encodeURIComponent(e.target.value.trim()); } });
+
+
+/* 移动端筛选折叠 */
+document.querySelector('.sidebar__toggle')?.addEventListener('click', () => {
+  document.querySelector('.sidebar')?.classList.toggle('is-open');
+});
+buildFilters(); render();
+</script>
+</body>
+</html>
