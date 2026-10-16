@@ -192,10 +192,11 @@ function buildEditForm() {
   const curChar = m.char ? charOf(m.char) : null;
   const needAvatar = curChar && !curChar.avatar;
   $('#editForm').innerHTML = `
-    <div class="field"><label class="field__label">归档标题</label>
-      <input class="input" data-f="etitle" value="${m.title}"></div>
+    <div class="field"><label class="field__label">角色名</label>
+      <input class="input" data-f="etitle" placeholder="如：白子、凯伊… 保存后自动匹配角色并抓取角色馆头图" value="${m.title}"></div>
     <div class="field"><label class="field__label">所属 IP</label>
-      <select class="input" data-f="eip">${IP_OPTIONS}</select></div>
+      <select class="input" data-f="eip">${IP_OPTIONS}<option value="__new__">＋ 自定义 IP…</option></select>
+      <input class="input" data-f="enewip" placeholder="输入新 IP 名称（如：赛马娘）" style="display:none;margin-top:8px"></div>
     <div class="field"><label class="field__label">角色</label>
       <select class="input" data-f="echar">
         <option value="">— 无角色 —</option>
@@ -224,6 +225,9 @@ $('#editPanel').addEventListener('change', e => {
   if (e.target.matches('[data-f="echar"]')) {
     $('#editPanel [data-f="enewchar"]').style.display = e.target.value === '__new__' ? '' : 'none';
   }
+  if (e.target.matches('[data-f="eip"]')) {
+    $('#editPanel [data-f="enewip"]').style.display = e.target.value === '__new__' ? '' : 'none';
+  }
 });
 
 $('#editPanel').addEventListener('click', e => {
@@ -235,8 +239,13 @@ $('#editPanel').addEventListener('click', e => {
 
 async function saveEdit(btn) {
   const title = $('#editPanel [data-f="etitle"]').value.trim();
-  if (!title) { UI.toast('请填写标题'); return; }
-  const ip = $('#editPanel [data-f="eip"]').value;
+  if (!title) { UI.toast('请填写角色名'); return; }
+  const ipSel = $('#editPanel [data-f="eip"]').value;
+  let ip = ipSel, newIp = '';
+  if (ipSel === '__new__') {
+    newIp = $('#editPanel [data-f="enewip"]').value.trim();
+    if (!newIp) { UI.toast('请填写自定义 IP 名称'); return; }
+  }
   let char = $('#editPanel [data-f="echar"]').value;
   if (char === '__new__') char = $('#editPanel [data-f="enewchar"]').value.trim() || null;
   const text = $('#editPanel [data-f="etext"]').value.trim();
@@ -245,7 +254,7 @@ async function saveEdit(btn) {
     const r = await fetch('/api/meme/' + m.code, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, ip, char, text }),
+      body: JSON.stringify({ title, ip, newIp, char, text }),
     });
     const j = await r.json();
     if (!j.ok) { UI.toast(j.error || '保存失败'); btn.disabled = false; return; }

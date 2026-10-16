@@ -64,6 +64,39 @@ function nextCode(ipId) {
   return `${prefix}-${String(max + 1).padStart(4, '0')}`;
 }
 
+/* 自定义 IP 建档：按名称生成稳定 id（英文转 slug，中文用 hash），返回 id */
+function ensureIp(name) {
+  const n = String(name).trim();
+  let id = n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!id || /^\d+$/.test(id)) id = 'ip-' + hashHue(n).toString(36);
+  if (db.prepare('SELECT id FROM ips WHERE id=?').get(id)) id += '-' + hashHue(n).toString(36).slice(0, 2);
+  db.prepare('INSERT INTO ips (id,name,short,weight,cls,priority) VALUES (?,?,?,?,?,?)')
+    .run(id, n, (id.replace(/-/g, '').slice(0, 4) || 'IP').toUpperCase(), 0.3, 'ip-badge--other', 9);
+  classifier.refreshDict();
+  return id;
+}
+
+/* 角色名自动识别角色：匹配字典 → 命中返回已有 id；未命中新建角色目录（出现即建） */
+function resolveCharacter(name, ipId) {
+  const q = String(name).trim();
+  if (!q) return null;
+  const ql = q.toLowerCase();
+  const rows = db.prepare('SELECT * FROM characters').all();
+  // 1) 精确匹配：中文名 / 英文名 / id
+  let hit = rows.find(r => r.name === q || (r.en || '').toLowerCase() === ql || r.id === q);
+  // 2) 包含 / 后缀匹配（≥2 字，避免单字误命中）
+  if (!hit && q.length >= 2) {
+    hit = rows.find(r =>
+      (r.en && ql.includes(r.en.toLowerCase())) ||
+      (r.name && (q.includes(r.name) || r.name.includes(q))));
+  }
+  if (hit) return hit.id;
+  const id = q;   // 与既有约定一致：新角色 id = 角色名
+  db.prepare('INSERT INTO characters (id,name,en,ip,hue,avatar,is_new) VALUES (?,?,?,?,?,?,1)')
+    .run(id, q, '', ipId || 'ba', hashHue(q), '');
+  return id;
+}
+
 /* ---------- 查询工具 ---------- */
 // 关联 IP/角色，返回完整字段
 const SELECT_MEME = `
@@ -220,12 +253,20 @@ app.get('/api/upload', (req, res) => {
 
 // ---------- 确认入库：人工校正后落库（新角色自动建目录） ----------
 app.post('/api/memes', express.json(), (req, res) => {
-  const { uploadId, title, ip, char, emo, text, auto, conf } = req.body || {};
+  const { uploadId, title, ip, newIp, char, emo, text, auto, conf } = req.body || {};
   const queue = loadQueue();
   const item = queue[uploadId];
   if (!item) return res.status(404).json({ error: '上传记录不存在' });
-  if (!title || !String(title).trim()) return res.status(400).json({ error: '请填写档案标题' });
-  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ip)) return res.status(400).json({ error: 'IP 无效' });
+  if (!title || !String(title).trim()) return res.status(400).json({ error: '请填写角色名' });
+
+  // 所属 IP：自定义 IP 自动建档
+  let ipId = ip;
+  if (ip === '__new__') {
+    const name = String(newIp || '').trim();
+    if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
+    ipId = ensureIp(name);
+  }
+  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ipId)) return res.status(400).json({ error: 'IP 无效' });
 
   // 情绪：未知标签（自定义）自动注册进 emotions
   const emoArr = Array.isArray(emo) ? emo : [];
@@ -240,24 +281,22 @@ app.post('/api/memes', express.json(), (req, res) => {
   }
   if (!finalEmo.length) finalEmo.push('doge');
 
-  // 出现即建目录：角色不在库中 → 自动 INSERT（新角色标记待确认）
-  if (char && !db.prepare('SELECT id FROM characters WHERE id=?').get(char)) {
-    db.prepare('INSERT INTO characters (id,name,en,ip,hue,avatar,is_new) VALUES (?,?,?,?,?,?,1)')
-      .run(char, char, '', ip, hashHue(char), '');
-  }
+  // 角色：显式选择优先；未选时用「角色名」自动识别 / 建档（出现即建目录）
+  let charId = char || null;
+  if (!charId && String(title).trim()) charId = resolveCharacter(title, ipId);
 
-  const code = nextCode(ip);
+  const code = nextCode(ipId);
   db.prepare(
     'INSERT INTO memes (code,title,ip,char,emo,views,age_days,auto,conf,text,image_url) VALUES (?,?,?,?,?,0,0,?,?,?,?)'
-  ).run(code, String(title).trim(), ip, char || null, JSON.stringify(finalEmo), auto ? 1 : 0, conf || 0, text || '', item.url);
+  ).run(code, String(title).trim(), ipId, charId, JSON.stringify(finalEmo), auto ? 1 : 0, conf || 0, text || '', item.url);
 
   // 移除暂存
   delete queue[uploadId];
   saveQueue(queue);
   classifier.refreshDict();
 
-  // 新角色自动获取头像（kivo 匹配，异步不阻塞入库响应）
-  if (char) avatar.ensureAvatar(char).catch(() => {});
+  // 自动获取角色头像（BA 走 kivo，其它走网上搜索，异步不阻塞入库响应）
+  if (charId) avatar.ensureAvatar(charId).catch(() => {});
 
   const meme = hydrate(db.prepare(SELECT_MEME + ' WHERE m.code=?').get(code));
   res.json({ ok: true, meme });
@@ -268,9 +307,17 @@ app.patch('/api/meme/:code', express.json(), (req, res) => {
   const code = req.params.code;
   if (!db.prepare('SELECT id FROM memes WHERE code=?').get(code)) return res.status(404).json({ error: '档案不存在' });
 
-  const { title, ip, char, emo, text } = req.body || {};
-  if (!title || !String(title).trim()) return res.status(400).json({ error: '标题不能为空' });
-  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ip)) return res.status(400).json({ error: 'IP 无效' });
+  const { title, ip, newIp, char, emo, text } = req.body || {};
+  if (!title || !String(title).trim()) return res.status(400).json({ error: '角色名不能为空' });
+
+  // 所属 IP：自定义 IP 自动建档
+  let ipId = ip;
+  if (ip === '__new__') {
+    const name = String(newIp || '').trim();
+    if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
+    ipId = ensureIp(name);
+  }
+  if (!db.prepare('SELECT id FROM ips WHERE id=?').get(ipId)) return res.status(400).json({ error: 'IP 无效' });
 
   const existing = db.prepare('SELECT * FROM memes WHERE code=?').get(code);
 
@@ -292,17 +339,16 @@ app.patch('/api/meme/:code', express.json(), (req, res) => {
     if (!finalEmo.length) finalEmo.push('doge');
   }
 
-  if (char && !db.prepare('SELECT id FROM characters WHERE id=?').get(char)) {
-    db.prepare('INSERT INTO characters (id,name,en,ip,hue,avatar,is_new) VALUES (?,?,?,?,?,?,1)')
-      .run(char, char, '', ip, hashHue(char), '');
-  }
+  // 角色：显式选择优先；未选时用「角色名」自动识别 / 建档
+  let charId = char || null;
+  if (!charId && String(title).trim()) charId = resolveCharacter(title, ipId);
 
   db.prepare('UPDATE memes SET title=?, ip=?, char=?, emo=?, text=? WHERE code=?')
-    .run(String(title).trim(), ip, char || null, JSON.stringify(finalEmo), text || '', code);
+    .run(String(title).trim(), ipId, charId, JSON.stringify(finalEmo), text || '', code);
   classifier.refreshDict();
 
-  // 编辑引入的新角色：自动获取头像
-  if (char) avatar.ensureAvatar(char).catch(() => {});
+  // 自动获取角色头像（编辑引入的新角色）
+  if (charId) avatar.ensureAvatar(charId).catch(() => {});
 
   res.json({ ok: true, meme: hydrate(db.prepare(SELECT_MEME + ' WHERE m.code=?').get(code)) });
 });

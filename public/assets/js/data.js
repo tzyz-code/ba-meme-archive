@@ -75,7 +75,7 @@ const EMOTIONS = SERVER ? SERVER.emotions : [
 
 /* ---------- 表情档案数据 ----------
    code   : 档案编号（用户会看到，具收藏感）
-   title  : 档案标题
+   title  : 角色名（即归档标题）
    ip     : 所属 IP（决定 badge 与权重）
    char   : 角色 id
    emo    : 情绪 id[]
