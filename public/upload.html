@@ -38,8 +38,8 @@
     <div style="text-align:center;margin-bottom:var(--sp-6)">
       <h1 style="font-size:var(--fs-h1);font-weight:var(--fw-black);letter-spacing:-1px">上传表情，入库归档</h1>
       <p class="text-mute mt-4" style="max-width:560px;margin-inline:auto">
-        拖进来就行。填好<b>角色名</b>、所属 IP 与搜索关键词，确认后即入库。
-        系统会自动匹配角色，并从网上抓取一张对应图片作为角色馆头图。
+        拖进来就行。填好<b>角色名</b>与<b>搜索关键词</b>，确认后即入库。
+        系统会自动匹配角色建档，并从网上抓取一张对应图片作为角色馆头图。
       </p>
     </div>
 
@@ -99,16 +99,7 @@
 
 <script src="assets/js/data.js"></script>
 <script>
-const { $, CHARS, UI } = window;
-const { charDisplayName } = UI;
-
-/* IP 下拉选项（后端元数据动态生成，BA 置顶） */
-const IP_OPTIONS = Object.values(window.IP_DB)
-  .sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
-  .map(ip => {
-    const suffix = ip.id === 'ba' ? '（本站主推）' : ip.id === 'none' ? '（无IP）' : '';
-    return `<option value="${ip.id}">${ip.name}${suffix}</option>`;
-  }).join('');
+const { $, UI } = window;
 
 function defaultTitle(name) {
   return name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || '未命名档案';
@@ -179,21 +170,7 @@ function itemHTML(it) {
     <div class="ai-result">
       <div class="field">
         <label class="field__label">角色名（必填）</label>
-        <input class="input" data-f="title" placeholder="如：白子、凯伊… 入库时自动匹配角色并抓取角色馆头图" value="${defaultTitle(it.name)}">
-      </div>
-      <div class="field">
-        <label class="field__label">所属 IP</label>
-        <select class="input" data-f="ip">${IP_OPTIONS}<option value="__new__">＋ 自定义 IP…</option></select>
-        <input class="input" data-f="newip" placeholder="输入新 IP 名称（如：赛马娘），入库后自动建档" style="display:none;margin-top:8px">
-      </div>
-      <div class="field">
-        <label class="field__label">角色（可改，新角色将自动建档）</label>
-        <select class="input" data-f="char">
-          <option value="">— 无角色 —</option>
-          ${CHARS.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-          <option value="__new__">＋ 新角色…</option>
-        </select>
-        <input class="input" data-f="newchar" placeholder="输入新角色名（如：凯伊），入库后自动建目录" style="display:none;margin-top:8px">
+        <input class="input" data-f="title" placeholder="如：白子、凯伊… 自动匹配角色建档并抓取角色馆头图" value="${defaultTitle(it.name)}">
       </div>
       <div class="field">
         <label class="field__label">搜索关键词（描述这张图的用途，帮助检索与收录）</label>
@@ -257,25 +234,10 @@ $('#queue').addEventListener('click', async e => {
   if (act.dataset.act === 'save') {
     const title = row.querySelector('[data-f="title"]').value.trim();
     if (!title) { UI.toast('请填写角色名'); return; }
-    let char = row.querySelector('[data-f="char"]').value;
-    if (char === '__new__') char = row.querySelector('[data-f="newchar"]').value.trim() || null;
-    const ipSel = row.querySelector('[data-f="ip"]').value;
-    let ip = ipSel, newIp = '';
-    if (ipSel === '__new__') {
-      newIp = row.querySelector('[data-f="newip"]').value.trim();
-      if (!newIp) { UI.toast('请填写自定义 IP 名称'); return; }
-    }
     const text = row.querySelector('[data-f="text"]').value.trim();
-
-    // 摘要显示名
-    const ipShow = ip === '__new__' ? '自定义：' + newIp : ((window.IP_DB[ip] && window.IP_DB[ip].name) || ip);
-    const chObj = CHARS.find(c => c.id === char);
-    const charShow = !char ? '无角色' : (chObj ? chObj.name : '新角色：' + char);
 
     showConfirm(`
       <div class="confirm-row"><span>角色名</span><b>${title}</b></div>
-      <div class="confirm-row"><span>所属 IP</span><b>${ipShow}</b></div>
-      <div class="confirm-row"><span>角色</span><b>${charShow}</b></div>
       <div class="confirm-row"><span>搜索关键词</span><b>${text || '—'}</b></div>
     `, async () => {
       act.disabled = true;
@@ -283,7 +245,7 @@ $('#queue').addEventListener('click', async e => {
         const r = await fetch('/api/memes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uploadId: it.uploadId, title, ip, newIp, char, text, auto: false, conf: 0 }),
+          body: JSON.stringify({ uploadId: it.uploadId, title, text }),
         });
         const j = await r.json();
         if (j.ok) {
@@ -301,18 +263,6 @@ $('#queue').addEventListener('click', async e => {
         act.disabled = false;
       }
     });
-  }
-});
-
-/* 角色 / IP：选「新」时显示输入框 */
-$('#queue').addEventListener('change', e => {
-  const row = e.target.closest('.upload-item');
-  if (!row) return;
-  if (e.target.matches('[data-f="char"]')) {
-    row.querySelector('[data-f="newchar"]').style.display = e.target.value === '__new__' ? '' : 'none';
-  }
-  if (e.target.matches('[data-f="ip"]')) {
-    row.querySelector('[data-f="newip"]').style.display = e.target.value === '__new__' ? '' : 'none';
   }
 });
 </script>

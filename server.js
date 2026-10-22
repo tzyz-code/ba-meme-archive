@@ -161,45 +161,27 @@ app.get('/api/upload', (req, res) => {
   res.json(Object.values(queue).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });
 
-// ---------- 确认入库 ----------
+// ---------- 确认入库：IP 固定蔚蓝档案，角色由角色名自动匹配/建档 ----------
 app.post('/api/memes', express.json(), async (req, res) => {
   try {
-    const { uploadId, title, ip, newIp, char, emo, text, auto, conf } = req.body || {};
+    const { uploadId, title, text } = req.body || {};
     const queue = loadQueue();
     const item = queue[uploadId];
     if (!item) return res.status(404).json({ error: '上传记录不存在' });
     if (!title || !String(title).trim()) return res.status(400).json({ error: '请填写角色名' });
 
-    let ipId = ip;
-    if (ip === '__new__') {
-      const name = String(newIp || '').trim();
-      if (!name) return res.status(400).json({ error: '请填写自定义 IP 名称' });
-      ipId = await cdb.ensureIp(name);
-    }
-    if (!(await cdb.getIp(ipId))) return res.status(400).json({ error: 'IP 无效' });
+    // 上传不再选择 IP：统一按站点主权重「蔚蓝档案」归档；历史自定义 IP 的数据保持原样
+    const ipId = 'ba';
+    const finalEmo = ['doge'];
 
-    const emoArr = Array.isArray(emo) ? emo : [];
-    const finalEmo = [];
-    for (const e of emoArr) {
-      const id = String(e).trim();
-      if (!id) continue;
-      await cdb.ensureEmotion(id);
-      finalEmo.push(id);
-    }
-    if (!finalEmo.length) finalEmo.push('doge');
-
-    let charId = char || null;
-    if (!charId && String(title).trim()) charId = await cdb.resolveCharacter(title, ipId);
-    // 显式指定的新角色也自动建档（出现即建，防止 memes 引用了 characters 里不存在的角色）
-    if (charId && !(await cdb.getChar(charId))) {
-      await cdb.insertChar({ id: charId, name: charId, en: '', ip: ipId, hue: cdb.hashHue(charId), avatar: '', is_new: 1 });
-    }
+    // 角色由角色名自动匹配；未命中自动建档（出现即建）
+    const charId = await cdb.resolveCharacter(String(title).trim(), ipId);
 
     const code = await cdb.nextCode(ipId);
     await cdb.insertMeme({
       code, title: String(title).trim(), ip: ipId, char: charId,
       emo: JSON.stringify(finalEmo), views: 0, age_days: 0,
-      auto: auto ? 1 : 0, conf: conf || 0, text: text || '', image_url: item.url,
+      auto: 0, conf: 0, text: text || '', image_url: item.url,
     });
 
     delete queue[uploadId];
