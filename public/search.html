@@ -63,6 +63,7 @@
         </button>
         <div class="sidebar__body">
           <div><div class="filter__title">所属 IP</div><div id="filterIP"></div></div>
+          <div><div class="filter__title">人数</div><div id="filterCrowd"></div></div>
           <div><div class="filter__title">角色</div><div id="filterChar"></div></div>
         </div>
       </aside>
@@ -96,6 +97,7 @@ let state = {
   ip: params.get('ip') || 'all',
   char: params.get('char') || 'all',
   emo: params.get('emo') || 'all',
+  crowd: params.get('crowd') || 'all',
   sort: 'relevance', limit: 12
 };
 
@@ -114,6 +116,12 @@ function buildFilters() {
     charCatalog().map(c=>{
       return `<div class="filter__item ${state.char===c.id?'is-active':''}" data-char="${c.id}"><span>${charDisplayName(c)}${c.isNew ? ' <i class="char-card__new">新</i>' : ''}</span><span class="filter__count">${c.count}</span></div>`;
     }).join('');
+
+  const crowdList = [{id:'all',name:'全部'},{id:'default',name:'默认'},{id:'multi',name:'多人'}];
+  $('#filterCrowd').innerHTML = crowdList.map(p=>{
+    const c = p.id==='all' ? MEMES.length : MEMES.filter(m=>(m.crowd||'default')===p.id).length;
+    return `<div class="filter__item ${state.crowd===p.id?'is-active':''}" data-crowd="${p.id}"><span>${p.name}</span><span class="filter__count">${c}</span></div>`;
+  }).join('');
 }
 
 document.addEventListener('click', e => {
@@ -121,6 +129,7 @@ document.addEventListener('click', e => {
   if (f) {
     if (f.dataset.ip) state.ip = f.dataset.ip;
     if (f.dataset.char) state.char = f.dataset.char;
+    if (f.dataset.crowd) state.crowd = f.dataset.crowd;
     state.limit = 12;
     buildFilters(); render(); return;
   }

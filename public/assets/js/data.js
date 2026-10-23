@@ -27,7 +27,7 @@ function loadServerData() {
     const memes = res.list.map(m => ({
       code: m.code, title: m.title, ip: m.ip, char: m.char, emo: m.emo,
       views: m.views, d: m.age_days, auto: !!m.auto, conf: m.conf, text: m.text,
-      imageUrl: m.image_url || ''
+      imageUrl: m.image_url || '', crowd: m.crowd || 'default'
     }));
     return { ipMap, chars, emotions, memes };
   } catch (e) {
@@ -196,12 +196,13 @@ function scoreMeme(m, query) {
 }
 
 /* 完整检索：文本 + 筛选 + 排序 */
-function search({ query = '', ip = 'all', char = 'all', emo = 'all', sort = 'relevance' } = {}) {
+function search({ query = '', ip = 'all', char = 'all', emo = 'all', crowd = 'all', sort = 'relevance' } = {}) {
   let list = MEMES.slice();
 
   if (ip   !== 'all') list = list.filter(m => m.ip === ip);
   if (char !== 'all') list = list.filter(m => m.char === char);
   if (emo  !== 'all') list = list.filter(m => m.emo.includes(emo));
+  if (crowd !== 'all') list = list.filter(m => (m.crowd || 'default') === crowd);
 
   if (query) {
     list = list.filter(m => textScore(m, query) > 0);   // 命中门槛只看文本相关性
@@ -241,6 +242,7 @@ function cardHTML(m) {
       <div class="card__tags">
         ${ipBadge(m.ip)}
         ${ch ? `<span class="tag tag--char">${charDisplayName(ch)}</span>` : ''}
+        ${m.crowd === 'multi' ? `<span class="tag">多人</span>` : ''}
       </div>
       ${m.auto ? `<div class="card__meta"><span class="card__stat" style="color:var(--teal-500)">⌁ AI ${m.conf}%</span></div>` : ''}
     </div>

@@ -173,6 +173,13 @@ function itemHTML(it) {
         <input class="input" data-f="title" placeholder="如：白子、凯伊… 自动匹配角色建档并抓取角色馆头图" value="${defaultTitle(it.name)}">
       </div>
       <div class="field">
+        <label class="field__label">人数</label>
+        <select class="input" data-f="crowd">
+          <option value="default" selected>默认</option>
+          <option value="multi">多人</option>
+        </select>
+      </div>
+      <div class="field">
         <label class="field__label">搜索关键词（描述这张图的用途，帮助检索与收录）</label>
         <input class="input" data-f="text" value="">
       </div>
@@ -234,10 +241,12 @@ $('#queue').addEventListener('click', async e => {
   if (act.dataset.act === 'save') {
     const title = row.querySelector('[data-f="title"]').value.trim();
     if (!title) { UI.toast('请填写角色名'); return; }
+    const crowd = row.querySelector('[data-f="crowd"]').value;
     const text = row.querySelector('[data-f="text"]').value.trim();
 
     showConfirm(`
       <div class="confirm-row"><span>角色名</span><b>${title}</b></div>
+      <div class="confirm-row"><span>人数</span><b>${crowd === 'multi' ? '多人' : '默认'}</b></div>
       <div class="confirm-row"><span>搜索关键词</span><b>${text || '—'}</b></div>
     `, async () => {
       act.disabled = true;
@@ -245,7 +254,7 @@ $('#queue').addEventListener('click', async e => {
         const r = await fetch('/api/memes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uploadId: it.uploadId, title, text }),
+          body: JSON.stringify({ uploadId: it.uploadId, title, text, crowd }),
         });
         const j = await r.json();
         if (j.ok) {

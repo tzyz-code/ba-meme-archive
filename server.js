@@ -83,6 +83,7 @@ app.get('/api/search', async (req, res) => {
     const ip   = String(req.query.ip  || 'all');
     const ch   = String(req.query.char || 'all');
     const emo  = String(req.query.emo  || 'all');
+    const crowd = String(req.query.crowd || 'all');
     const sort = String(req.query.sort || 'relevance');
     const limit  = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const offset = parseInt(req.query.offset, 10) || 0;
@@ -91,6 +92,7 @@ app.get('/api/search', async (req, res) => {
     if (ip  !== 'all') list = list.filter(m => m.ip === ip);
     if (ch  !== 'all') list = list.filter(m => m.char === ch);
     if (emo !== 'all') list = list.filter(m => m.emo.includes(emo));
+    if (crowd !== 'all') list = list.filter(m => (m.crowd || 'default') === crowd);
 
     if (q) {
       list = list.filter(m => textScore(m, q) > 0);
@@ -164,7 +166,7 @@ app.get('/api/upload', (req, res) => {
 // ---------- 确认入库：IP 固定蔚蓝档案，角色由角色名自动匹配/建档 ----------
 app.post('/api/memes', express.json(), async (req, res) => {
   try {
-    const { uploadId, title, text } = req.body || {};
+    const { uploadId, title, text, crowd } = req.body || {};
     const queue = loadQueue();
     const item = queue[uploadId];
     if (!item) return res.status(404).json({ error: '上传记录不存在' });
@@ -173,6 +175,8 @@ app.post('/api/memes', express.json(), async (req, res) => {
     // 上传不再选择 IP：统一按站点主权重「蔚蓝档案」归档；历史自定义 IP 的数据保持原样
     const ipId = 'ba';
     const finalEmo = ['doge'];
+    // 人数分类：默认 / 多人（未指定时按默认）
+    const crowdVal = crowd === 'multi' ? 'multi' : 'default';
 
     // 角色由角色名自动匹配；未命中自动建档（出现即建）
     const charId = await cdb.resolveCharacter(String(title).trim(), ipId);
@@ -181,7 +185,7 @@ app.post('/api/memes', express.json(), async (req, res) => {
     await cdb.insertMeme({
       code, title: String(title).trim(), ip: ipId, char: charId,
       emo: JSON.stringify(finalEmo), views: 0, age_days: 0,
-      auto: 0, conf: 0, text: text || '', image_url: item.url,
+      auto: 0, conf: 0, text: text || '', image_url: item.url, crowd: crowdVal,
     });
 
     delete queue[uploadId];
@@ -337,6 +341,7 @@ async function renderSSR(m, base) {
       <div class="meta-list mt-5">
         <div class="meta-list__row"><span class="meta-list__key">所属 IP</span><span class="meta-list__val">${esc(ip.name)}</span></div>
         <div class="meta-list__row"><span class="meta-list__key">角色</span><span class="meta-list__val">${esc(m.char_name || '— 无角色 —')}</span></div>
+        <div class="meta-list__row"><span class="meta-list__key">人数</span><span class="meta-list__val">${m.crowd === 'multi' ? '多人' : '默认'}</span></div>
         <div class="meta-list__row"><span class="meta-list__key">搜索关键词</span><span class="meta-list__val">${esc(m.text || '—')}</span></div>
       </div>
     </div></aside>

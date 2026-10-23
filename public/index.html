@@ -101,6 +101,10 @@
             <div id="filterIP"></div>
           </div>
           <div>
+            <div class="filter__title">人数</div>
+            <div id="filterCrowd"></div>
+          </div>
+          <div>
             <div class="filter__title">角色</div>
             <div id="filterChar"></div>
           </div>
@@ -182,7 +186,7 @@
 const { $, CHARS, MEMES, UI } = window;
 const { ipBadge, avatarStyle, search, cardHTML, favs, charOf, charCatalog, charAvatarHTML, charDisplayName, emoOf } = UI;
 
-let state = { query:'', ip:'all', char:'all', emo:'all', sort:'relevance', limit: 12 };
+let state = { query:'', ip:'all', char:'all', emo:'all', crowd:'all', sort:'relevance', limit: 12 };
 
 /* ---- 角色馆（由已收录表情包动态派生，新角色出现即自动建档） ---- */
 $('#charGrid').innerHTML = charCatalog().map(c => {
@@ -216,6 +220,13 @@ function buildFilters() {
       return `<div class="filter__item ${state.char===c.id?'is-active':''}" data-char="${c.id}">
         <span>${charDisplayName(c)}${c.isNew ? ' <i class="char-card__new">新</i>' : ''}</span><span class="filter__count">${c.count}</span></div>`;
     }).join('');
+
+  const crowdList = [{id:'all',name:'全部'},{id:'default',name:'默认'},{id:'multi',name:'多人'}];
+  $('#filterCrowd').innerHTML = crowdList.map(p => {
+    const cnt = p.id==='all' ? MEMES.length : MEMES.filter(m=>(m.crowd||'default')===p.id).length;
+    return `<div class="filter__item ${state.crowd===p.id?'is-active':''}" data-crowd="${p.id}">
+      <span>${p.name}</span><span class="filter__count">${cnt}</span></div>`;
+  }).join('');
 }
 
 document.addEventListener('click', e => {
@@ -223,6 +234,7 @@ document.addEventListener('click', e => {
   if (f) {
     if (f.dataset.ip)   state.ip = f.dataset.ip;
     if (f.dataset.char) state.char = f.dataset.char;
+    if (f.dataset.crowd) state.crowd = f.dataset.crowd;
     state.limit = 12;
     buildFilters(); render();
     document.getElementById('latest').scrollIntoView({behavior:'smooth'});
