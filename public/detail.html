@@ -42,6 +42,7 @@
           <button class="btn btn--ghost" id="copyBtn">复制链接</button>
           <button class="btn btn--ghost" id="copyBdBtn">复制梗图文字</button>
           <button class="btn btn--ghost" id="editBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;vertical-align:-3px"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> 编辑档案</button>
+          <button class="btn btn--ghost" id="delBtn" style="color:var(--red-500,#d33)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;vertical-align:-3px"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> 删除档案</button>
         </div>
 
         <div class="panel mt-5" id="editPanel" style="display:none">
@@ -129,13 +130,25 @@
 <div class="modal-mask" id="adminMask" style="display:none">
   <div class="modal-box">
     <div class="modal-box__title">管理员验证</div>
-    <p class="modal-box__sub">编辑档案需验证管理员身份，请输入口令</p>
+    <p class="modal-box__sub" id="adminSub">编辑档案需验证管理员身份，请输入口令</p>
     <div class="modal-box__body">
       <input type="password" class="input" id="adminKeyInput" placeholder="管理员口令" autocomplete="off">
     </div>
     <div class="modal-box__actions">
       <button class="btn btn--ghost" id="adminCancel">取消</button>
       <button class="btn btn--primary" id="adminOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal-mask" id="delMask" style="display:none">
+  <div class="modal-box">
+    <div class="modal-box__title">删除档案</div>
+    <p class="modal-box__sub">确定删除「<b id="delName"></b>」吗？删除后不可恢复。</p>
+    <div class="modal-box__actions">
+      <button class="btn btn--ghost" id="delCancel">取消</button>
+      <button class="btn btn--primary" id="delOk" style="background:var(--red-500,#d33)">确认删除</button>
     </div>
   </div>
 </div>
@@ -271,26 +284,69 @@ function openEditPanel() {
 }
 $('#editBtn').addEventListener('click', () => {
   if (adminKey) { openEditPanel(); return; }
-  showAdminPrompt();
+  showAdminPrompt({ sub: '编辑档案需验证管理员身份，请输入口令', onOk: openEditPanel });
 });
 
-/* 管理员口令弹窗 */
-function showAdminPrompt() {
+/* 管理员口令弹窗（支持验证通过后执行不同动作） */
+let _adminCb = null;
+function showAdminPrompt(opts) {
+  const o = opts || {};
+  _adminCb = o.onOk || openEditPanel;
+  $('#adminSub').textContent = o.sub || '编辑档案需验证管理员身份，请输入口令';
   $('#adminKeyInput').value = '';
   $('#adminMask').style.display = 'flex';
   setTimeout(() => $('#adminKeyInput').focus(), 50);
 }
-function closeAdminPrompt() { $('#adminMask').style.display = 'none'; }
+function closeAdminPrompt() { $('#adminMask').style.display = 'none'; _adminCb = null; }
 $('#adminOk').addEventListener('click', () => {
   const v = $('#adminKeyInput').value.trim();
   if (!v) { UI.toast('请输入管理员口令'); return; }
   adminKey = v;
   sessionStorage.setItem('ba_admin_key', v);
+  const cb = _adminCb;
   closeAdminPrompt();
-  openEditPanel();
+  if (cb) cb();
 });
 $('#adminCancel').addEventListener('click', closeAdminPrompt);
 $('#adminMask').addEventListener('click', e => { if (e.target === $('#adminMask')) closeAdminPrompt(); });
+
+/* ---- 删除档案（仅管理员，需口令；本机记住口令后直接弹确认） ---- */
+function openDelConfirm() {
+  $('#delName').textContent = m.title;
+  $('#delMask').style.display = 'flex';
+}
+$('#delBtn').addEventListener('click', () => {
+  if (adminKey) { openDelConfirm(); return; }
+  showAdminPrompt({ sub: '删除档案需验证管理员身份，请输入口令', onOk: openDelConfirm });
+});
+$('#delCancel').addEventListener('click', () => { $('#delMask').style.display = 'none'; });
+$('#delMask').addEventListener('click', e => { if (e.target === $('#delMask')) $('#delMask').style.display = 'none'; });
+$('#delOk').addEventListener('click', async () => {
+  const btn = $('#delOk');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/meme/' + m.code, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminKey }),
+    });
+    const j = await r.json();
+    if (r.status === 403) {
+      adminKey = ''; sessionStorage.removeItem('ba_admin_key');
+      $('#delMask').style.display = 'none';
+      UI.toast(j.error || '口令错误');
+      btn.disabled = false;
+      showAdminPrompt({ sub: '删除档案需验证管理员身份，请输入口令', onOk: openDelConfirm });
+      return;
+    }
+    if (!j.ok) { UI.toast(j.error || '删除失败'); btn.disabled = false; return; }
+    UI.toast('已删除');
+    setTimeout(() => { location.href = 'index.html'; }, 600);
+  } catch (err) {
+    UI.toast('删除失败：' + err.message);
+    btn.disabled = false;
+  }
+});
 
 $('#editPanel').addEventListener('change', e => {
   if (e.target.matches('[data-f="echar"]')) {

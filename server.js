@@ -250,6 +250,28 @@ app.patch('/api/meme/:code', express.json(), async (req, res) => {
   }
 });
 
+/* ---------- 删除档案：仅管理员可删除（需口令） ---------- */
+app.delete('/api/meme/:code', express.json(), async (req, res) => {
+  try {
+    const code = req.params.code;
+    const m = await cdb.getMeme(code);
+    if (!m) return res.status(404).json({ error: '档案不存在' });
+
+    const adminKey = (req.body && req.body.adminKey) || '';
+    if (String(adminKey) !== ADMIN_KEY) return res.status(403).json({ error: '无删除权限：需要管理员口令' });
+
+    await cdb.adminDeleteMeme(adminKey, code);
+    // 顺带清理对象存储里的图片（失败不影响删除结果）
+    if (m.image_url) storage.deleteMemeImage(m.image_url).catch(() => {});
+
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.includes('管理员口令') || msg.includes('无删除权限')) return res.status(403).json({ error: '无删除权限：需要管理员口令' });
+    res.status(500).json({ error: msg });
+  }
+});
+
 /* ---------- 手动上传角色头像（仅限尚无头图的角色） ---------- */
 const avatarUpload = multer({
   storage: multer.memoryStorage(),

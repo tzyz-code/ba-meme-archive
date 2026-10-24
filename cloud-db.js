@@ -164,6 +164,11 @@ async function adminUpdateMeme(adminKey, code, title, ipId, charId, emoJson, tex
   }));
 }
 
+/* 管理员删除档案（SECURITY DEFINER RPC，函数内校验口令，绕过 RLS 删除） */
+async function adminDeleteMeme(adminKey, code) {
+  return unwrap(await db.rpc('admin_delete_meme', { p_admin_key: adminKey, p_code: code }));
+}
+
 /* 更新角色头像 */
 async function updateCharAvatar(id, avatar) {
   return unwrap(await db.from('characters').update({ avatar, is_new: 0 }).eq('id', id).select());
@@ -174,5 +179,5 @@ module.exports = {
   allIps, allChars, allEmotions, getIp, getChar,
   allMemes, getMeme, charsWithCount,
   insertIp, insertChar, ensureEmotion, nextCode, ensureIp, resolveCharacter,
-  insertMeme, adminUpdateMeme, updateCharAvatar,
+  insertMeme, adminUpdateMeme, adminDeleteMeme, updateCharAvatar,
 };
